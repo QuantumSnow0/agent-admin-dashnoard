@@ -1,36 +1,125 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Airtel Agents - Admin Dashboard
+
+Admin dashboard for managing Airtel SmartConnect agents and customer registrations.
+
+## Tech Stack
+
+- **Framework**: Next.js 16 (App Router)
+- **Language**: TypeScript
+- **UI**: shadcn/ui + Tailwind CSS
+- **Backend**: Supabase (PostgreSQL, Auth, Real-time)
+- **State Management**: TanStack Query
+- **Charts**: Recharts
+- **Tables**: TanStack Table
 
 ## Getting Started
 
-First, run the development server:
+### 1. Install Dependencies
+
+```bash
+npm install
+```
+
+### 2. Set Up Environment Variables
+
+Copy `.env.local.example` to `.env.local` and fill in your Supabase credentials:
+
+```bash
+cp .env.local.example .env.local
+```
+
+Update the following variables:
+- `NEXT_PUBLIC_SUPABASE_URL` - Your Supabase project URL
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Your Supabase anon key
+- `SUPABASE_SERVICE_ROLE_KEY` - Your Supabase service role key (for server-side operations)
+
+### 3. Run Development Server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Project Structure
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+admin-dashboard/
+├── app/
+│   ├── (auth)/
+│   │   └── login/          # Login page
+│   ├── dashboard/          # Dashboard routes
+│   │   ├── agents/         # Agent management
+│   │   ├── registrations/  # Registration management
+│   │   └── analytics/      # Analytics & reports
+│   ├── api/                # API routes
+│   └── layout.tsx          # Root layout
+├── components/
+│   ├── ui/                 # shadcn/ui components
+│   ├── agents/             # Agent-related components
+│   └── registrations/      # Registration-related components
+├── lib/
+│   ├── supabase/           # Supabase client configs
+│   ├── providers/          # React providers
+│   └── utils/              # Utility functions
+└── types/                  # TypeScript types
+```
 
-## Learn More
+## Features
 
-To learn more about Next.js, take a look at the following resources:
+### ✅ Implemented
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- [x] Next.js 16 App Router setup
+- [x] TypeScript configuration
+- [x] Tailwind CSS + shadcn/ui
+- [x] Supabase SSR client setup
+- [x] Authentication middleware
+- [x] Login page
+- [x] Basic dashboard layout
+- [x] TanStack Query provider
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### 🚧 To Implement
 
-## Deploy on Vercel
+- [ ] Agent management (list, approve, reject, ban)
+- [ ] Registration management (view, filter, update status)
+- [ ] Analytics dashboard (charts, statistics)
+- [ ] Real-time updates
+- [ ] Export functionality (Excel/CSV)
+- [ ] Search and filtering
+- [ ] Bulk actions
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Authentication
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The dashboard uses Supabase Auth with SSR. Users must be authenticated to access dashboard routes.
+
+### Setting Up Admin Users
+
+Admin users should be created in Supabase Auth dashboard or via the Supabase Admin API.
+
+## Database Schema
+
+The dashboard connects to the same Supabase database as the mobile app:
+
+- `agents` - Agent profiles and status
+- `customer_registrations` - Customer registrations
+- `notifications` - System notifications
+- `device_tokens` - Push notification tokens
+
+## Development
+
+### Adding shadcn/ui Components
+
+```bash
+npx shadcn@latest add [component-name]
+```
+
+### Available Scripts
+
+- `npm run dev` - Start development server
+- `npm run build` - Build for production
+- `npm run start` - Start production server
+- `npm run lint` - Run ESLint
+
+## License
+
+Private - Airtel Kenya
