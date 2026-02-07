@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Users, FileText } from "lucide-react";
+import { LayoutDashboard, Users, FileText, Bell } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface NavLinkProps {
   href: string;
-  iconName: "dashboard" | "agents" | "registrations";
+  iconName: "dashboard" | "agents" | "registrations" | "send-notification";
   children: React.ReactNode;
 }
 
@@ -15,6 +15,7 @@ const iconMap = {
   dashboard: LayoutDashboard,
   agents: Users,
   registrations: FileText,
+  "send-notification": Bell,
 };
 
 export function NavLink({ href, iconName, children }: NavLinkProps) {

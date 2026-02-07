@@ -70,6 +70,11 @@ export default async function DashboardLayout({
       href: "/dashboard/registrations",
       iconName: "registrations" as const,
     },
+    {
+      name: "Send notification",
+      href: "/dashboard/send-notification",
+      iconName: "send-notification" as const,
+    },
   ];
 
   return (

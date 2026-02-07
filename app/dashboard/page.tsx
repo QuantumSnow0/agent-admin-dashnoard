@@ -125,8 +125,8 @@ export default async function DashboardPage() {
             <div className="relative z-10">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 px-4 pb-2 pt-0">
                 <CardTitle className="text-xs font-medium uppercase tracking-wider text-white/90">{title}</CardTitle>
-                <div className="rounded-none bg-white/20 p-2">
-                  <Icon className="h-5 w-5 text-white" />
+                <div className="rounded-none bg-white/20 p-1.5">
+                  <Icon className="h-4 w-4 text-white" />
                 </div>
               </CardHeader>
               <CardContent className="px-4 pb-0 pt-0">
@@ -148,8 +148,8 @@ export default async function DashboardPage() {
             <div className="relative z-10">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 px-4 pb-2 pt-0">
                 <CardTitle className="text-xs font-medium uppercase tracking-wider text-white/90">{title}</CardTitle>
-                <div className="rounded-none bg-white/20 p-2">
-                  <Icon className="h-5 w-5 text-white" />
+                <div className="rounded-none bg-white/20 p-1.5">
+                  <Icon className="h-4 w-4 text-white" />
                 </div>
               </CardHeader>
               <CardContent className="px-4 pb-0 pt-0">

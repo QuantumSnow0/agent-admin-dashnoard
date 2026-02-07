@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -145,9 +146,11 @@ export function AgentActions({ agent }: AgentActionsProps) {
         <DropdownMenuSeparator />
         {getStatusActions()}
         <DropdownMenuSeparator />
-        <DropdownMenuItem disabled={loading} className="text-blue-700 focus:text-blue-700">
-          <User className="mr-2 h-4 w-4" />
-          View Profile
+        <DropdownMenuItem asChild>
+          <Link href={`/dashboard/agents/${agent.id}`} className="flex cursor-pointer items-center text-blue-700 focus:text-blue-700">
+            <User className="mr-2 h-4 w-4" />
+            View Profile
+          </Link>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

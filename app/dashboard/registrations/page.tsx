@@ -1,24 +1,27 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { FileText, Clock, CheckCircle2, AlertCircle } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { FileText, Clock, CheckCircle2, Package } from "lucide-react";
 import Link from "next/link";
-import { RegistrationsTabsWrapper } from "@/components/registrations/registrations-tabs-wrapper";
+import { RegistrationsView } from "@/components/registrations/registrations-view";
 
-// Force dynamic rendering for searchParams
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+function escapeSearch(q: string): string {
+  return q.trim().replace(/'/g, "''");
+}
+
 interface RegistrationsPageProps {
-  searchParams: Promise<{
-    status?: string;
-  }>;
+  searchParams: Promise<{ status?: string; q?: string; agentId?: string }>;
 }
 
 export default async function RegistrationsPage({ searchParams }: RegistrationsPageProps) {
   const supabase = await createClient();
+  const params = await searchParams;
+  const statusFilter = params.status || "all";
+  const searchQuery = (params.q ?? "").trim();
+  const agentIdFilter = (params.agentId ?? "").trim();
 
   const {
     data: { user },
@@ -28,27 +31,20 @@ export default async function RegistrationsPage({ searchParams }: RegistrationsP
     redirect("/login?error=not_authenticated");
   }
 
-  // Verify user is admin
   const { data: agent } = await supabase
     .from("agents")
-    .select("is_admin, name, email")
+    .select("is_admin")
     .eq("id", user.id)
     .single();
 
-  if (!agent || !agent.is_admin) {
+  if (!agent?.is_admin) {
     redirect("/login?error=admin_access_required");
   }
 
-  // Await searchParams (Next.js 15+)
-  const params = await searchParams;
-  
-  // Get status filter from URL params
-  const statusFilter = params.status || "all";
-
-  // Build query - apply filter before executing
   let registrationsQuery = supabase
     .from("customer_registrations")
-    .select(`
+    .select(
+      `
       id,
       agent_id,
       customer_name,
@@ -58,31 +54,38 @@ export default async function RegistrationsPage({ searchParams }: RegistrationsP
       preferred_package,
       installation_town,
       delivery_landmark,
-      installation_location,
       visit_date,
       visit_time,
       status,
       created_at,
-      updated_at,
-      ms_forms_response_id,
-      ms_forms_submitted_at
-    `)
+      agents(name)
+    `
+    )
     .order("created_at", { ascending: false });
 
-  // Apply status filter if not "all"
   if (statusFilter !== "all") {
     registrationsQuery = registrationsQuery.eq("status", statusFilter);
   }
+  if (agentIdFilter) {
+    registrationsQuery = registrationsQuery.eq("agent_id", agentIdFilter);
+  }
+  if (searchQuery) {
+    const escaped = escapeSearch(searchQuery);
+    registrationsQuery = registrationsQuery.or(
+      `customer_name.ilike.%${escaped}%,email.ilike.%${escaped}%,airtel_number.ilike.%${escaped}%,alternate_number.ilike.%${escaped}%,installation_town.ilike.%${escaped}%,delivery_landmark.ilike.%${escaped}%`
+    );
+  }
 
-  const { data: registrations, error } = await registrationsQuery;
-
-  // Get counts for each status
   const [
+    { data: registrations, error },
+    { data: agentsList },
     { count: totalCount },
     { count: pendingCount },
     { count: approvedCount },
     { count: installedCount },
   ] = await Promise.all([
+    registrationsQuery,
+    supabase.from("agents").select("id, name").order("name", { ascending: true, nullsFirst: false }),
     supabase.from("customer_registrations").select("*", { count: "exact", head: true }),
     supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("status", "pending"),
     supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("status", "approved"),
@@ -93,175 +96,66 @@ export default async function RegistrationsPage({ searchParams }: RegistrationsP
     console.error("Error fetching registrations:", error);
   }
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "installed":
-        return (
-          <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
-            <CheckCircle2 className="mr-1 h-3 w-3" />
-            Installed
-          </Badge>
-        );
-      case "approved":
-        return (
-          <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">
-            <CheckCircle2 className="mr-1 h-3 w-3" />
-            Approved
-          </Badge>
-        );
-      case "pending":
-        return (
-          <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-100">
-            <Clock className="mr-1 h-3 w-3" />
-            Pending
-          </Badge>
-        );
-      default:
-        return <Badge>{status}</Badge>;
-    }
-  };
-
-  const getPackageBadge = (packageType: string) => {
-    return packageType === "premium" ? (
-      <Badge className="bg-purple-100 text-purple-800 hover:bg-purple-100">
-        Premium
-      </Badge>
-    ) : (
-      <Badge className="bg-gray-100 text-gray-800 hover:bg-gray-100">
-        Standard
-      </Badge>
-    );
-  };
-
-  const getInitials = (name: string) => {
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2);
-  };
+  const countCards = [
+    { title: "All", value: totalCount ?? 0, icon: FileText, cardBg: "bg-slate-600" },
+    { title: "Pending", value: pendingCount ?? 0, icon: Clock, cardBg: "bg-amber-600" },
+    { title: "Approved", value: approvedCount ?? 0, icon: CheckCircle2, cardBg: "bg-blue-600" },
+    { title: "Installed", value: installedCount ?? 0, icon: Package, cardBg: "bg-emerald-600" },
+  ];
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-gray-900">
-            Customer Registrations
-          </h1>
-          <p className="mt-2 text-sm text-gray-600">
-            View and manage all customer registrations
-          </p>
-        </div>
-        <Link href="/dashboard/registrations">
-          <Button variant="outline">
-            <FileText className="mr-2 h-4 w-4" />
-            All Registrations
-          </Button>
-        </Link>
+    <div className="space-y-4 -ml-2 -mt-6">
+      <div className="flex flex-row items-center gap-2">
+        <FileText className="h-6 w-6 text-gray-700" />
+        <h1 className="text-xl font-bold tracking-tight text-gray-900">
+          Customer Registrations
+        </h1>
+      </div>
+      <p className="text-sm text-gray-600">
+        View and manage all customer registrations. Change status to move registrations through the pipeline.
+      </p>
+
+      {/* Count cards */}
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+        {countCards.map(({ title, value, icon: Icon, cardBg }) => (
+          <Link
+            key={title}
+            href={title === "All" ? "/dashboard/registrations" : `/dashboard/registrations?status=${title.toLowerCase()}`}
+          >
+            <Card
+              className={`relative gap-0 overflow-hidden rounded-none border-2 py-4 shadow-sm transition-all hover:shadow-md ${cardBg} border-transparent hover:border-white/30`}
+            >
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/30 via-white/5 to-transparent" aria-hidden />
+              <div className="relative z-10">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 px-4 pb-2 pt-0">
+                  <CardTitle className="text-xs font-medium uppercase tracking-wider text-white/90">{title}</CardTitle>
+                  <div className="rounded-none bg-white/20 p-1.5">
+                    <Icon className="h-4 w-4 text-white" />
+                  </div>
+                </CardHeader>
+                <CardContent className="px-4 pb-0 pt-0">
+                  <div className="text-xl font-bold text-white">{value}</div>
+                </CardContent>
+              </div>
+            </Card>
+          </Link>
+        ))}
       </div>
 
-      {/* Status Tabs */}
-      <RegistrationsTabsWrapper
-        key={statusFilter}
+      <RegistrationsView
+        registrations={registrations ?? []}
+        error={error}
         statusFilter={statusFilter}
+        searchQuery={searchQuery}
+        agentIdFilter={agentIdFilter}
+        agentsList={agentsList ?? []}
         counts={{
           all: totalCount ?? 0,
           pending: pendingCount ?? 0,
           approved: approvedCount ?? 0,
           installed: installedCount ?? 0,
         }}
-      >
-        {error ? (
-          <Card>
-            <CardContent className="py-8 text-center text-red-600">
-              Error loading registrations: {error.message}
-            </CardContent>
-          </Card>
-        ) : !registrations || registrations.length === 0 ? (
-          <Card>
-            <CardContent className="py-12 text-center">
-              <FileText className="mx-auto h-12 w-12 text-gray-400" />
-              <h3 className="mt-4 text-lg font-semibold text-gray-900">
-                No registrations found
-              </h3>
-              <p className="mt-2 text-sm text-gray-500">
-                {statusFilter === "all"
-                  ? "No customer registrations have been submitted yet."
-                  : `No registrations with status "${statusFilter}" found.`}
-              </p>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid gap-4">
-            {registrations.map((registration: any) => (
-              <Card
-                key={registration.id}
-                className="border-gray-200 transition-shadow hover:shadow-md"
-              >
-                <CardContent className="p-6">
-                  <div className="flex items-start justify-between gap-4">
-                    {/* Left: Registration Info */}
-                    <div className="flex items-start space-x-4 flex-1 min-w-0">
-                      {/* Avatar */}
-                      <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-purple-100 text-purple-700 font-semibold">
-                        {getInitials(registration.customer_name)}
-                      </div>
-
-                      {/* Details */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center space-x-2 mb-1">
-                          <h3 className="text-lg font-semibold text-gray-900 truncate">
-                            {registration.customer_name}
-                          </h3>
-                          {getStatusBadge(registration.status)}
-                          {getPackageBadge(registration.preferred_package)}
-                        </div>
-                        <p className="text-sm text-gray-600 truncate mb-2">
-                          {registration.email}
-                        </p>
-                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 mb-2">
-                          {registration.airtel_number && (
-                            <span className="whitespace-nowrap">📱 Airtel: {registration.airtel_number}</span>
-                          )}
-                          {registration.alternate_number && (
-                            <span className="whitespace-nowrap">📱 Alt: {registration.alternate_number}</span>
-                          )}
-                          {registration.installation_town && (
-                            <span className="whitespace-nowrap">📍 {registration.installation_town}</span>
-                          )}
-                          {registration.delivery_landmark && (
-                            <span className="whitespace-nowrap">🏠 {registration.delivery_landmark}</span>
-                          )}
-                          <span className="whitespace-nowrap">
-                            🕒 {new Date(registration.created_at).toLocaleDateString()}
-                          </span>
-                        </div>
-                        {registration.visit_date && registration.visit_time && (
-                          <div className="text-xs text-gray-600 mb-1">
-                            📅 Visit: {registration.visit_date} at {registration.visit_time}
-                          </div>
-                        )}
-                        {registration.agent_id && (
-                          <div className="text-xs text-gray-600">
-                            👤 Agent ID: <strong>{registration.agent_id.slice(0, 8)}...</strong>
-                          </div>
-                        )}
-                        {registration.installation_location && (
-                          <div className="text-xs text-gray-500 mt-1">
-                            📍 Location: {registration.installation_location}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
-      </RegistrationsTabsWrapper>
+      />
     </div>
   );
 }
