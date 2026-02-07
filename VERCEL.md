@@ -5,6 +5,8 @@
 - Push the `admin-dashboard` folder to its own repo, or deploy the monorepo root and set the **Root Directory** to `admin-dashboard` in Vercel.
 - In [Vercel](https://vercel.com), import the project and leave **Framework Preset** as Next.js (auto-detected).
 
+**Build & Output:** You don’t need to change these. Leave the default Build Command, Output Directory, and Install Command as-is; Vercel detects Next.js and uses the right settings.
+
 ## 2. Environment variables
 
 In the Vercel project **Settings → Environment Variables**, add:

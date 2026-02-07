@@ -23,7 +23,7 @@ type RegistrationRow = {
   visit_time: string | null;
   status: string;
   created_at: string | null;
-  agents: { name: string | null } | null;
+  agents: { name: string | null }[] | { name: string | null } | null;
 };
 
 const STATUS_STYLES: Record<string, string> = {
@@ -215,7 +215,7 @@ export function RegistrationsView({
                   {registrations.map((reg) => {
                     const statusStyle = STATUS_STYLES[reg.status] ?? "bg-gray-100 text-gray-800 border-gray-200";
                     const contact = [reg.airtel_number, reg.alternate_number, reg.email].filter(Boolean).join(" · ") || "—";
-                    const agentName = reg.agents?.name ?? "—";
+                    const agentName = (Array.isArray(reg.agents) ? reg.agents[0]?.name : reg.agents?.name) ?? "—";
                     const dateStr = reg.created_at
                       ? new Date(reg.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "2-digit" })
                       : "—";
@@ -248,7 +248,7 @@ export function RegistrationsView({
                           <Link
                             href={`/dashboard/agents/${reg.agent_id}`}
                             className="text-indigo-600 hover:text-indigo-800 font-medium truncate block"
-                            title={agentName}
+                            title={agentName ?? undefined}
                           >
                             {agentName}
                           </Link>
