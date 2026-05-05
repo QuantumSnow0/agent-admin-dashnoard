@@ -13,10 +13,13 @@ import {
 import { MoreVertical, Clock, CheckCircle2, Package } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
+export type RegistrationSource = "airtel" | "safaricom";
+
 interface RegistrationStatusActionsProps {
   registration: {
     id: string;
     status: string;
+    source: RegistrationSource;
   };
 }
 
@@ -34,10 +37,9 @@ export function RegistrationStatusActions({ registration }: RegistrationStatusAc
     setLoading(true);
     try {
       const supabase = createClient();
-      const { error } = await supabase
-        .from("customer_registrations")
-        .update({ status: newStatus })
-        .eq("id", registration.id);
+      const table =
+        registration.source === "safaricom" ? "safaricom_registrations" : "customer_registrations";
+      const { error } = await supabase.from(table).update({ status: newStatus }).eq("id", registration.id);
 
       if (error) {
         console.error("Error updating registration status:", error);

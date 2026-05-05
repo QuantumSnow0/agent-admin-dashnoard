@@ -6,25 +6,11 @@ import { useState, useEffect, useCallback } from "react";
 import { FileText, Clock, CheckCircle2, Package, Search, User } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { RegistrationStatusActions } from "@/components/agents/registration-status-actions";
+import type { AdminRegistrationRow } from "@/lib/admin-registrations";
+import { RegistrationPackageBadge } from "@/components/registrations/registration-package-badge";
+import { RegistrationDetailPanel } from "@/components/registrations/registration-detail-panel";
 
 const SEARCH_DEBOUNCE_MS = 300;
-
-type RegistrationRow = {
-  id: string;
-  agent_id: string;
-  customer_name: string | null;
-  email: string | null;
-  airtel_number: string | null;
-  alternate_number: string | null;
-  preferred_package: string;
-  installation_town: string | null;
-  delivery_landmark: string | null;
-  visit_date: string | null;
-  visit_time: string | null;
-  status: string;
-  created_at: string | null;
-  agents: { name: string | null }[] | { name: string | null } | null;
-};
 
 const STATUS_STYLES: Record<string, string> = {
   pending: "bg-amber-100 text-amber-800 border-amber-200",
@@ -35,7 +21,7 @@ const STATUS_STYLES: Record<string, string> = {
 type AgentOption = { id: string; name: string | null };
 
 interface RegistrationsViewProps {
-  registrations: RegistrationRow[];
+  registrations: AdminRegistrationRow[];
   error: Error | null;
   statusFilter: string;
   searchQuery: string;
@@ -56,10 +42,27 @@ export function RegistrationsView({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [searchInput, setSearchInput] = useState(searchQuery);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailRegistration, setDetailRegistration] = useState<AdminRegistrationRow | null>(null);
+
+  const openDetail = (reg: AdminRegistrationRow) => {
+    setDetailRegistration(reg);
+    setDetailOpen(true);
+  };
+
+  const closeDetail = () => setDetailOpen(false);
 
   useEffect(() => {
     setSearchInput(searchQuery);
   }, [searchQuery]);
+
+  const detailId = detailRegistration?.id;
+  const detailSource = detailRegistration?.source;
+  useEffect(() => {
+    if (!detailOpen || !detailId || !detailSource) return;
+    const next = registrations.find((r) => r.id === detailId && r.source === detailSource);
+    if (next) setDetailRegistration(next);
+  }, [registrations, detailOpen, detailId, detailSource]);
 
   const applyParams = useCallback(
     (updates: { q?: string; agentId?: string; status?: string }) => {
@@ -115,6 +118,9 @@ export function RegistrationsView({
 
   return (
     <div className="space-y-3 min-w-0 max-w-full">
+      {detailRegistration && (
+        <RegistrationDetailPanel registration={detailRegistration} open={detailOpen} onClose={closeDetail} />
+      )}
       {/* Search and agent filter */}
       <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-gray-50/50 px-3 py-2">
         <Search className="h-4 w-4 shrink-0 text-gray-400" />
@@ -122,7 +128,7 @@ export function RegistrationsView({
           type="search"
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
-          placeholder="Search customer, email, phone, location…"
+          placeholder="Search name, email, phone, ID, package, location…"
           className="h-8 w-40 shrink-0 rounded border border-gray-200 bg-white px-2.5 text-sm placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 sm:w-52"
           aria-label="Search registrations"
         />
@@ -190,17 +196,19 @@ export function RegistrationsView({
             <div className="min-w-0">
               <table className="w-full table-fixed text-xs">
                 <colgroup>
-                  <col className="w-[14%]" />
-                  <col className="w-[18%]" />
-                  <col className="w-[6%]" />
-                  <col className="w-[12%]" />
                   <col className="w-[10%]" />
                   <col className="w-[12%]" />
-                  <col className="w-[8%]" />
+                  <col className="w-[16%]" />
+                  <col className="w-[6%]" />
                   <col className="w-[12%]" />
+                  <col className="w-[9%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[8%]" />
+                  <col className="w-[10%]" />
                 </colgroup>
                 <thead>
                   <tr className="border-b border-gray-200 bg-gray-50/80 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                    <th className="px-2 py-2">Carrier</th>
                     <th className="px-2 py-2">Customer</th>
                     <th className="px-2 py-2">Contact</th>
                     <th className="px-2 py-2">Pkg</th>
@@ -214,13 +222,38 @@ export function RegistrationsView({
                 <tbody>
                   {registrations.map((reg) => {
                     const statusStyle = STATUS_STYLES[reg.status] ?? "bg-gray-100 text-gray-800 border-gray-200";
-                    const contact = [reg.airtel_number, reg.alternate_number, reg.email].filter(Boolean).join(" · ") || "—";
+                    const contact =
+                      reg.source === "safaricom"
+                        ? [reg.safaricom_number, reg.alternate_number, reg.email].filter(Boolean).join(" · ") || "—"
+                        : [reg.airtel_number, reg.alternate_number, reg.email].filter(Boolean).join(" · ") || "—";
                     const agentName = (Array.isArray(reg.agents) ? reg.agents[0]?.name : reg.agents?.name) ?? "—";
                     const dateStr = reg.created_at
                       ? new Date(reg.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "2-digit" })
                       : "—";
+                    const rowKey = `${reg.source}-${reg.id}`;
                     return (
-                      <tr key={reg.id} className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50/50">
+                      <tr
+                        key={rowKey}
+                        role="button"
+                        tabIndex={0}
+                        title="View full details"
+                        className="cursor-pointer border-b border-gray-100 last:border-b-0 hover:bg-gray-50/50"
+                        onClick={() => openDetail(reg)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            openDetail(reg);
+                          }
+                        }}
+                      >
+                        <td className="px-2 py-2 text-gray-600">
+                          <span
+                            className="inline-flex rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-700"
+                            title={reg.source === "safaricom" ? "Safaricom" : "Airtel"}
+                          >
+                            {reg.source === "safaricom" ? "SF" : "AT"}
+                          </span>
+                        </td>
                         <td className="px-2 py-2 font-medium text-gray-900 truncate" title={reg.customer_name || undefined}>
                           {reg.customer_name || "—"}
                         </td>
@@ -228,13 +261,7 @@ export function RegistrationsView({
                           {contact}
                         </td>
                         <td className="px-2 py-2">
-                          <span
-                            className={`inline-flex rounded border px-1.5 py-0.5 text-[11px] font-medium capitalize ${
-                              reg.preferred_package === "premium" ? "bg-violet-100 text-violet-800" : "bg-slate-100 text-slate-700"
-                            }`}
-                          >
-                            {reg.preferred_package === "premium" ? "P" : "S"}
-                          </span>
+                          <RegistrationPackageBadge reg={reg} />
                         </td>
                         <td className="px-2 py-2 text-gray-600 truncate" title={reg.installation_town || reg.delivery_landmark || undefined}>
                           {reg.installation_town || reg.delivery_landmark || "—"}
@@ -244,7 +271,7 @@ export function RegistrationsView({
                             {reg.status}
                           </span>
                         </td>
-                        <td className="px-2 py-2 truncate">
+                        <td className="px-2 py-2 truncate" onClick={(e) => e.stopPropagation()}>
                           <Link
                             href={`/dashboard/agents/${reg.agent_id}`}
                             className="text-indigo-600 hover:text-indigo-800 font-medium truncate block"
@@ -256,8 +283,8 @@ export function RegistrationsView({
                         <td className="px-2 py-2 text-gray-500 tabular-nums whitespace-nowrap" title={reg.created_at ? new Date(reg.created_at).toLocaleDateString() : undefined}>
                           {dateStr}
                         </td>
-                        <td className="px-2 py-2 text-right">
-                          <RegistrationStatusActions registration={{ id: reg.id, status: reg.status }} />
+                        <td className="px-2 py-2 text-right" onClick={(e) => e.stopPropagation()}>
+                          <RegistrationStatusActions registration={{ id: reg.id, status: reg.status, source: reg.source }} />
                         </td>
                       </tr>
                     );

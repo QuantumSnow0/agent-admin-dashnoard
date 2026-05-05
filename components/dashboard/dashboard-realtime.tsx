@@ -9,8 +9,8 @@ import { createClient } from "@/lib/supabase/client";
  * When data changes, refreshes the dashboard so cards and charts update.
  *
  * Ensure Realtime is enabled in Supabase:
- * Dashboard → Database → Replication → add "agents" and "customer_registrations"
- * to the supabase_realtime publication.
+ * Dashboard → Database → Replication → add "agents", "customer_registrations",
+ * and "safaricom_registrations" to the supabase_realtime publication.
  */
 export function DashboardRealtime() {
   const router = useRouter();
@@ -35,6 +35,14 @@ export function DashboardRealtime() {
         { event: "*", schema: "public", table: "customer_registrations" },
         (payload) => {
           console.log("🔄 [Dashboard Realtime] customer_registrations changed:", payload);
+          router.refresh();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "safaricom_registrations" },
+        (payload) => {
+          console.log("🔄 [Dashboard Realtime] safaricom_registrations changed:", payload);
           router.refresh();
         }
       )

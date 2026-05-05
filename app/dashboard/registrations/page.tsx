@@ -4,6 +4,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FileText, Clock, CheckCircle2, Package } from "lucide-react";
 import Link from "next/link";
 import { RegistrationsView } from "@/components/registrations/registrations-view";
+import {
+  mapCustomerRegistrationToAdminRow,
+  mapSafaricomRegistrationToAdminRow,
+  mergeRegistrationsByDate,
+} from "@/lib/admin-registrations";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -15,6 +20,52 @@ function escapeSearch(q: string): string {
 interface RegistrationsPageProps {
   searchParams: Promise<{ status?: string; q?: string; agentId?: string }>;
 }
+
+const CUSTOMER_SELECT = `
+  id,
+  agent_id,
+  customer_name,
+  email,
+  airtel_number,
+  alternate_number,
+  preferred_package,
+  installation_town,
+  delivery_landmark,
+  installation_location,
+  visit_date,
+  visit_time,
+  status,
+  created_at,
+  updated_at,
+  ms_forms_response_id,
+  ms_forms_submitted_at,
+  agents(name)
+`;
+
+const SAFARICOM_SELECT = `
+  id,
+  agent_id,
+  customer_name,
+  email,
+  safaricom_number,
+  alternate_number,
+  identification_number,
+  service_package,
+  fiber_deal_id,
+  portable_deal_id,
+  dedicated_wifi_deal_id,
+  fiber_region_name,
+  fiber_cluster_name,
+  fiber_estate_id,
+  fiber_estate_name,
+  install_county,
+  install_town,
+  install_landmark,
+  status,
+  created_at,
+  updated_at,
+  agents(name)
+`;
 
 export default async function RegistrationsPage({ searchParams }: RegistrationsPageProps) {
   const supabase = await createClient();
@@ -31,91 +82,98 @@ export default async function RegistrationsPage({ searchParams }: RegistrationsP
     redirect("/login?error=not_authenticated");
   }
 
-  const { data: agent } = await supabase
-    .from("agents")
-    .select("is_admin")
-    .eq("id", user.id)
-    .single();
+  const { data: agent } = await supabase.from("agents").select("is_admin").eq("id", user.id).single();
 
   if (!agent?.is_admin) {
     redirect("/login?error=admin_access_required");
   }
 
-  let registrationsQuery = supabase
+  let customerQuery = supabase
     .from("customer_registrations")
-    .select(
-      `
-      id,
-      agent_id,
-      customer_name,
-      email,
-      airtel_number,
-      alternate_number,
-      preferred_package,
-      installation_town,
-      delivery_landmark,
-      visit_date,
-      visit_time,
-      status,
-      created_at,
-      agents(name)
-    `
-    )
+    .select(CUSTOMER_SELECT)
+    .order("created_at", { ascending: false });
+
+  let safaricomQuery = supabase
+    .from("safaricom_registrations")
+    .select(SAFARICOM_SELECT)
     .order("created_at", { ascending: false });
 
   if (statusFilter !== "all") {
-    registrationsQuery = registrationsQuery.eq("status", statusFilter);
+    customerQuery = customerQuery.eq("status", statusFilter);
+    safaricomQuery = safaricomQuery.eq("status", statusFilter);
   }
   if (agentIdFilter) {
-    registrationsQuery = registrationsQuery.eq("agent_id", agentIdFilter);
+    customerQuery = customerQuery.eq("agent_id", agentIdFilter);
+    safaricomQuery = safaricomQuery.eq("agent_id", agentIdFilter);
   }
   if (searchQuery) {
     const escaped = escapeSearch(searchQuery);
-    registrationsQuery = registrationsQuery.or(
+    customerQuery = customerQuery.or(
       `customer_name.ilike.%${escaped}%,email.ilike.%${escaped}%,airtel_number.ilike.%${escaped}%,alternate_number.ilike.%${escaped}%,installation_town.ilike.%${escaped}%,delivery_landmark.ilike.%${escaped}%`
+    );
+    safaricomQuery = safaricomQuery.or(
+      `customer_name.ilike.%${escaped}%,email.ilike.%${escaped}%,safaricom_number.ilike.%${escaped}%,alternate_number.ilike.%${escaped}%,identification_number.ilike.%${escaped}%,service_package.ilike.%${escaped}%,fiber_region_name.ilike.%${escaped}%,fiber_cluster_name.ilike.%${escaped}%,install_county.ilike.%${escaped}%,install_town.ilike.%${escaped}%,install_landmark.ilike.%${escaped}%`
     );
   }
 
   const [
-    { data: registrations, error },
+    { data: customerRows, error: customerError },
+    { data: safaricomRows, error: safaricomError },
     { data: agentsList },
-    { count: totalCount },
-    { count: pendingCount },
-    { count: approvedCount },
-    { count: installedCount },
+    { count: custTotal },
+    { count: safTotal },
+    { count: custPending },
+    { count: safPending },
+    { count: custApproved },
+    { count: safApproved },
+    { count: custInstalled },
+    { count: safInstalled },
   ] = await Promise.all([
-    registrationsQuery,
+    customerQuery,
+    safaricomQuery,
     supabase.from("agents").select("id, name").order("name", { ascending: true, nullsFirst: false }),
     supabase.from("customer_registrations").select("*", { count: "exact", head: true }),
+    supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }),
     supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("status", "pending"),
+    supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }).eq("status", "pending"),
     supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("status", "approved"),
+    supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }).eq("status", "approved"),
     supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("status", "installed"),
+    supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }).eq("status", "installed"),
   ]);
 
+  const error = customerError ?? safaricomError;
   if (error) {
     console.error("Error fetching registrations:", error);
   }
 
+  const merged = mergeRegistrationsByDate([
+    ...(customerRows ?? []).map((r) => mapCustomerRegistrationToAdminRow(r as Record<string, unknown>)),
+    ...(safaricomRows ?? []).map((r) => mapSafaricomRegistrationToAdminRow(r as Record<string, unknown>)),
+  ]);
+
+  const totalCount = (custTotal ?? 0) + (safTotal ?? 0);
+  const pendingCount = (custPending ?? 0) + (safPending ?? 0);
+  const approvedCount = (custApproved ?? 0) + (safApproved ?? 0);
+  const installedCount = (custInstalled ?? 0) + (safInstalled ?? 0);
+
   const countCards = [
-    { title: "All", value: totalCount ?? 0, icon: FileText, cardBg: "bg-slate-600" },
-    { title: "Pending", value: pendingCount ?? 0, icon: Clock, cardBg: "bg-amber-600" },
-    { title: "Approved", value: approvedCount ?? 0, icon: CheckCircle2, cardBg: "bg-blue-600" },
-    { title: "Installed", value: installedCount ?? 0, icon: Package, cardBg: "bg-emerald-600" },
+    { title: "All", value: totalCount, icon: FileText, cardBg: "bg-slate-600" },
+    { title: "Pending", value: pendingCount, icon: Clock, cardBg: "bg-amber-600" },
+    { title: "Approved", value: approvedCount, icon: CheckCircle2, cardBg: "bg-blue-600" },
+    { title: "Installed", value: installedCount, icon: Package, cardBg: "bg-emerald-600" },
   ];
 
   return (
     <div className="space-y-4 -ml-2 -mt-6">
       <div className="flex flex-row items-center gap-2">
         <FileText className="h-6 w-6 text-gray-700" />
-        <h1 className="text-xl font-bold tracking-tight text-gray-900">
-          Customer Registrations
-        </h1>
+        <h1 className="text-xl font-bold tracking-tight text-gray-900">Customer Registrations</h1>
       </div>
       <p className="text-sm text-gray-600">
-        View and manage all customer registrations. Change status to move registrations through the pipeline.
+        View and manage Airtel and Safaricom registrations. Change status to move registrations through the pipeline.
       </p>
 
-      {/* Count cards */}
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
         {countCards.map(({ title, value, icon: Icon, cardBg }) => (
           <Link
@@ -125,7 +183,10 @@ export default async function RegistrationsPage({ searchParams }: RegistrationsP
             <Card
               className={`relative gap-0 overflow-hidden rounded-none border-2 py-4 shadow-sm transition-all hover:shadow-md ${cardBg} border-transparent hover:border-white/30`}
             >
-              <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/30 via-white/5 to-transparent" aria-hidden />
+              <div
+                className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/30 via-white/5 to-transparent"
+                aria-hidden
+              />
               <div className="relative z-10">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 px-4 pb-2 pt-0">
                   <CardTitle className="text-xs font-medium uppercase tracking-wider text-white/90">{title}</CardTitle>
@@ -143,17 +204,17 @@ export default async function RegistrationsPage({ searchParams }: RegistrationsP
       </div>
 
       <RegistrationsView
-        registrations={registrations ?? []}
+        registrations={merged}
         error={error}
         statusFilter={statusFilter}
         searchQuery={searchQuery}
         agentIdFilter={agentIdFilter}
         agentsList={agentsList ?? []}
         counts={{
-          all: totalCount ?? 0,
-          pending: pendingCount ?? 0,
-          approved: approvedCount ?? 0,
-          installed: installedCount ?? 0,
+          all: totalCount,
+          pending: pendingCount,
+          approved: approvedCount,
+          installed: installedCount,
         }}
       />
     </div>

@@ -5,6 +5,11 @@ import Link from "next/link";
 import { ChevronLeft, Wallet, TrendingUp, Users, Package, Sparkles, Bell } from "lucide-react";
 import { AgentActions } from "@/components/agents/agent-actions";
 import { AgentCustomersRegistered } from "@/components/agents/agent-customers-registered";
+import {
+  mapCustomerRegistrationToAdminRow,
+  mapSafaricomRegistrationToAdminRow,
+  mergeRegistrationsByDate,
+} from "@/lib/admin-registrations";
 
 interface AgentProfilePageProps {
   params: Promise<{ id: string }>;
@@ -50,19 +55,37 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
   }
 
   const [
-    { count: totalRegistrations },
+    { count: custRegCount },
+    { count: safRegCount },
     { count: installedPremium },
     { count: installedStandard },
-    { data: registrations },
+    { data: customerRegs },
+    { data: safaricomRegs },
   ] = await Promise.all([
     supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("agent_id", id),
+    supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }).eq("agent_id", id),
     supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("agent_id", id).eq("status", "installed").eq("preferred_package", "premium"),
     supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("agent_id", id).eq("status", "installed").eq("preferred_package", "standard"),
     supabase
       .from("customer_registrations")
-      .select("id, customer_name, email, airtel_number, alternate_number, preferred_package, installation_town, delivery_landmark, visit_date, visit_time, status, created_at")
+      .select(
+        "id, agent_id, customer_name, email, airtel_number, alternate_number, preferred_package, installation_town, delivery_landmark, visit_date, visit_time, status, created_at"
+      )
       .eq("agent_id", id)
       .order("created_at", { ascending: false }),
+    supabase
+      .from("safaricom_registrations")
+      .select(
+        "id, agent_id, customer_name, email, safaricom_number, alternate_number, service_package, fiber_region_name, fiber_cluster_name, install_county, install_town, install_landmark, status, created_at"
+      )
+      .eq("agent_id", id)
+      .order("created_at", { ascending: false }),
+  ]);
+
+  const totalRegistrations = (custRegCount ?? 0) + (safRegCount ?? 0);
+  const registrations = mergeRegistrationsByDate([
+    ...(customerRegs ?? []).map((r) => mapCustomerRegistrationToAdminRow(r as Record<string, unknown>)),
+    ...(safaricomRegs ?? []).map((r) => mapSafaricomRegistrationToAdminRow(r as Record<string, unknown>)),
   ]);
 
   const statusStyle = STATUS_STYLES[agent.status] ?? "bg-gray-100 text-gray-800 border-gray-200";

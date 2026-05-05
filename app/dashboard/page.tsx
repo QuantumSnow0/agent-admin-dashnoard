@@ -35,33 +35,41 @@ export default async function DashboardPage() {
   // Fetch counts in parallel
   const [
     { count: totalAgents },
-    { count: totalRegistrations },
+    { count: custRegCount },
+    { count: safRegCount },
     { count: pendingApprovals },
-    { count: pendingRegistrations },
-    { count: installedCount },
+    { count: custPendingRegs },
+    { count: safPendingRegs },
+    { count: custInstalled },
+    { count: safInstalled },
   ] = await Promise.all([
     supabase.from("agents").select("*", { count: "exact", head: true }),
     supabase.from("customer_registrations").select("*", { count: "exact", head: true }),
+    supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }),
     supabase.from("agents").select("*", { count: "exact", head: true }).eq("status", "pending"),
     supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("status", "pending"),
+    supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }).eq("status", "pending"),
     supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("status", "installed"),
+    supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }).eq("status", "installed"),
   ]);
+
+  const totalRegistrations = (custRegCount ?? 0) + (safRegCount ?? 0);
+  const pendingRegistrations = (custPendingRegs ?? 0) + (safPendingRegs ?? 0);
+  const installedCount = (custInstalled ?? 0) + (safInstalled ?? 0);
 
   const thirtyDaysAgo = subDays(new Date(), 30).toISOString();
 
   const [
-    { data: allRegsLast30 },
+    { data: custRegsLast30 },
+    { data: safRegsLast30 },
     { data: installedRegsAll },
   ] = await Promise.all([
-    supabase
-      .from("customer_registrations")
-      .select("created_at")
-      .gte("created_at", thirtyDaysAgo),
-    supabase
-      .from("customer_registrations")
-      .select("created_at, preferred_package")
-      .eq("status", "installed"),
+    supabase.from("customer_registrations").select("created_at").gte("created_at", thirtyDaysAgo),
+    supabase.from("safaricom_registrations").select("created_at").gte("created_at", thirtyDaysAgo),
+    supabase.from("customer_registrations").select("created_at, preferred_package").eq("status", "installed"),
   ]);
+
+  const allRegsLast30 = [...(custRegsLast30 ?? []), ...(safRegsLast30 ?? [])];
 
   const premiumCount = installedRegsAll?.filter((r) => r.preferred_package === "premium").length ?? 0;
   const standardCount = installedRegsAll?.filter((r) => r.preferred_package === "standard").length ?? 0;
@@ -91,6 +99,7 @@ export default async function DashboardPage() {
   const packageMix = [
     { name: "Standard", value: standardCount },
     { name: "Premium", value: premiumCount },
+    { name: "Safaricom", value: safInstalled ?? 0 },
   ];
 
   const row1Cards = [

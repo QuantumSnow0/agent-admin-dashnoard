@@ -5,21 +5,8 @@ import Link from "next/link";
 import { FileText, ExternalLink, Clock, CheckCircle2, Package } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { RegistrationStatusActions } from "@/components/agents/registration-status-actions";
-
-export type RegistrationRow = {
-  id: string;
-  customer_name: string | null;
-  email: string | null;
-  airtel_number: string | null;
-  alternate_number: string | null;
-  preferred_package: string;
-  installation_town: string | null;
-  delivery_landmark: string | null;
-  visit_date: string | null;
-  visit_time: string | null;
-  status: string;
-  created_at: string | null;
-};
+import type { AdminRegistrationRow } from "@/lib/admin-registrations";
+import { RegistrationPackageBadge } from "@/components/registrations/registration-package-badge";
 
 const REG_STATUS_STYLES: Record<string, string> = {
   pending: "bg-amber-100 text-amber-800 border-amber-200",
@@ -30,7 +17,7 @@ const REG_STATUS_STYLES: Record<string, string> = {
 type StatusFilter = "all" | "pending" | "approved" | "installed";
 
 interface AgentCustomersRegisteredProps {
-  registrations: RegistrationRow[];
+  registrations: AdminRegistrationRow[];
 }
 
 export function AgentCustomersRegistered({ registrations }: AgentCustomersRegisteredProps) {
@@ -115,17 +102,19 @@ export function AgentCustomersRegistered({ registrations }: AgentCustomersRegist
                     <div className="min-w-0">
                       <table className="w-full table-fixed text-xs">
                         <colgroup>
-                          <col className="w-[16%]" />
-                          <col className="w-[20%]" />
                           <col className="w-[7%]" />
                           <col className="w-[14%]" />
-                          <col className="w-[10%]" />
+                          <col className="w-[18%]" />
+                          <col className="w-[6%]" />
+                          <col className="w-[13%]" />
                           <col className="w-[9%]" />
-                          <col className="w-[10%]" />
-                          <col className="w-[14%]" />
+                          <col className="w-[8%]" />
+                          <col className="w-[9%]" />
+                          <col className="w-[16%]" />
                         </colgroup>
                         <thead>
                           <tr className="border-b border-gray-200 bg-gray-50/80 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                            <th className="px-2 py-2">Carrier</th>
                             <th className="px-2 py-2">Customer</th>
                             <th className="px-2 py-2">Contact</th>
                             <th className="px-2 py-2">Pkg</th>
@@ -139,13 +128,28 @@ export function AgentCustomersRegistered({ registrations }: AgentCustomersRegist
                         <tbody>
                           {filtered.map((reg) => {
                             const regStatusStyle = REG_STATUS_STYLES[reg.status] ?? "bg-gray-100 text-gray-800 border-gray-200";
-                            const contact = [reg.airtel_number, reg.alternate_number, reg.email].filter(Boolean).join(" · ") || "—";
-                            const visit = [reg.visit_date, reg.visit_time].filter(Boolean).join(" ") || "—";
+                            const contact =
+                              reg.source === "safaricom"
+                                ? [reg.safaricom_number, reg.alternate_number, reg.email].filter(Boolean).join(" · ") || "—"
+                                : [reg.airtel_number, reg.alternate_number, reg.email].filter(Boolean).join(" · ") || "—";
+                            const visit =
+                              reg.source === "airtel"
+                                ? [reg.visit_date, reg.visit_time].filter(Boolean).join(" ") || "—"
+                                : "—";
                             const dateStr = reg.created_at
                               ? new Date(reg.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "2-digit" })
                               : "—";
+                            const rowKey = `${reg.source}-${reg.id}`;
                             return (
-                              <tr key={reg.id} className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50/50">
+                              <tr key={rowKey} className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50/50">
+                                <td className="px-2 py-2 text-gray-600">
+                                  <span
+                                    className="inline-flex rounded border border-gray-200 bg-gray-50 px-1 py-0.5 text-[10px] font-semibold uppercase text-gray-700"
+                                    title={reg.source === "safaricom" ? "Safaricom" : "Airtel"}
+                                  >
+                                    {reg.source === "safaricom" ? "SF" : "AT"}
+                                  </span>
+                                </td>
                                 <td className="px-2 py-2 font-medium text-gray-900 truncate" title={reg.customer_name || undefined}>
                                   {reg.customer_name || "—"}
                                 </td>
@@ -153,13 +157,7 @@ export function AgentCustomersRegistered({ registrations }: AgentCustomersRegist
                                   {contact}
                                 </td>
                                 <td className="px-2 py-2">
-                                  <span
-                                    className={`inline-flex rounded border px-1.5 py-0.5 text-[11px] font-medium capitalize ${
-                                      reg.preferred_package === "premium" ? "bg-violet-100 text-violet-800" : "bg-slate-100 text-slate-700"
-                                    }`}
-                                  >
-                                    {reg.preferred_package === "premium" ? "P" : "S"}
-                                  </span>
+                                  <RegistrationPackageBadge reg={reg} />
                                 </td>
                                 <td className="px-2 py-2 text-gray-600 truncate" title={reg.installation_town || reg.delivery_landmark || undefined}>
                                   {reg.installation_town || reg.delivery_landmark || "—"}
@@ -176,7 +174,9 @@ export function AgentCustomersRegistered({ registrations }: AgentCustomersRegist
                                   {visit === "—" ? "—" : visit}
                                 </td>
                                 <td className="px-2 py-2 text-right">
-                                  <RegistrationStatusActions registration={{ id: reg.id, status: reg.status }} />
+                                  <RegistrationStatusActions
+                                    registration={{ id: reg.id, status: reg.status, source: reg.source }}
+                                  />
                                 </td>
                               </tr>
                             );

@@ -18,8 +18,8 @@ import {
 
 const REGISTRATIONS_COLOR = "#2563eb";
 const REVENUE_COLOR = "#0d9488";
-const PIE_COLORS = ["#4f46e5", "#7c3aed"]; // indigo-600, violet-600 (slice fill)
-const PIE_LABEL_COLORS = ["#818cf8", "#a78bfa"]; // lighter tint of each slice – Standard, Premium
+const PIE_COLORS = ["#4f46e5", "#7c3aed", "#059669"]; // Standard, Premium, Safaricom (installed)
+const PIE_LABEL_COLORS = ["#818cf8", "#a78bfa", "#34d399"];
 
 export type RegistrationsByDay = { date: string; count: number }[];
 export type RevenueByDay = { date: string; revenue: number }[];
@@ -97,7 +97,7 @@ export function DashboardCharts({
       {/* Package mix (full width or in grid) */}
       <div className="rounded-none border border-gray-200 bg-white p-4 shadow-sm lg:col-span-2">
         <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-gray-600">
-          Package mix (installed)
+          Installed mix (Airtel standard / premium + Safaricom)
         </h3>
         <div className="mx-auto h-64 max-w-sm">
           <ResponsiveContainer width="100%" height="100%">
@@ -136,7 +136,7 @@ export function DashboardCharts({
               </Pie>
               <Tooltip
                 contentStyle={{ fontSize: 12, borderRadius: 0 }}
-                formatter={(value: number | undefined, name: string | undefined) => [`${value ?? 0} installations`, name ?? ""]}
+                formatter={(value: number | undefined, name: string | undefined) => [`${value ?? 0} installs`, name ?? ""]}
               />
               <Legend />
             </PieChart>
