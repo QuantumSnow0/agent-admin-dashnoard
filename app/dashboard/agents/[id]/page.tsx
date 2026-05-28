@@ -5,6 +5,12 @@ import Link from "next/link";
 import { ChevronLeft, Wallet, TrendingUp, Users, Package, Sparkles, Bell } from "lucide-react";
 import { AgentActions } from "@/components/agents/agent-actions";
 import { AgentCustomersRegistered } from "@/components/agents/agent-customers-registered";
+import { AgentPaymentManager } from "@/components/agents/agent-payment-manager";
+import {
+  PREMIUM_COMMISSION,
+  STANDARD_COMMISSION,
+  getSafaricomCommissionKesForRegistration,
+} from "@/lib/commissions";
 import {
   mapCustomerRegistrationToAdminRow,
   mapSafaricomRegistrationToAdminRow,
@@ -61,6 +67,8 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
     { count: installedStandard },
     { data: customerRegs },
     { data: safaricomRegs },
+    { data: paymentRows, error: paymentRowsError },
+    { data: safInstalledRows, error: safInstalledRowsError },
   ] = await Promise.all([
     supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("agent_id", id),
     supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }).eq("agent_id", id),
@@ -80,9 +88,49 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
       )
       .eq("agent_id", id)
       .order("created_at", { ascending: false }),
+    supabase
+      .from("agent_payments")
+      .select("amount_ksh")
+      .eq("agent_id", id),
+    supabase
+      .from("safaricom_registrations")
+      .select("service_package, fiber_deal_id, portable_deal_id, dedicated_wifi_deal_id")
+      .eq("agent_id", id)
+      .eq("status", "installed"),
   ]);
 
   const totalRegistrations = (custRegCount ?? 0) + (safRegCount ?? 0);
+  const installedPremiumCount = installedPremium ?? 0;
+  const installedStandardCount = installedStandard ?? 0;
+  const airtelCommissionKsh =
+    installedPremiumCount * PREMIUM_COMMISSION +
+    installedStandardCount * STANDARD_COMMISSION;
+  const safaricomCommissionKsh =
+    safInstalledRowsError || !safInstalledRows
+      ? 0
+      : safInstalledRows.reduce(
+          (sum, row) =>
+            sum +
+            getSafaricomCommissionKesForRegistration(
+              row as {
+                service_package: string;
+                fiber_deal_id?: string | null;
+                portable_deal_id?: string | null;
+                dedicated_wifi_deal_id?: string | null;
+              }
+            ),
+          0
+        );
+  const computedTotalEarningsKsh = airtelCommissionKsh + safaricomCommissionKsh;
+  const paidFromLedgerKsh =
+    paymentRowsError || !paymentRows
+      ? 0
+      : paymentRows.reduce(
+          (sum, row) =>
+            sum + Number((row as { amount_ksh?: number | string | null }).amount_ksh ?? 0),
+          0
+        );
+  const computedBalanceKsh = Math.max(0, computedTotalEarningsKsh - paidFromLedgerKsh);
   const registrations = mergeRegistrationsByDate([
     ...(customerRegs ?? []).map((r) => mapCustomerRegistrationToAdminRow(r as Record<string, unknown>)),
     ...(safaricomRegs ?? []).map((r) => mapSafaricomRegistrationToAdminRow(r as Record<string, unknown>)),
@@ -154,14 +202,14 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
               <TrendingUp className="h-3.5 w-3.5 shrink-0 text-teal-600" />
               <span className="text-gray-500">Earnings</span>
               <span className="font-semibold tabular-nums text-gray-900">
-                KSh {(agent.total_earnings ?? 0).toLocaleString()}
+                KSh {computedTotalEarningsKsh.toLocaleString()}
               </span>
             </div>
             <div className="flex items-center gap-1.5">
               <Wallet className="h-3.5 w-3.5 shrink-0 text-indigo-600" />
               <span className="text-gray-500">Balance</span>
               <span className="font-semibold tabular-nums text-gray-900">
-                KSh {(agent.available_balance ?? 0).toLocaleString()}
+                KSh {computedBalanceKsh.toLocaleString()}
               </span>
             </div>
             <div className="flex items-center gap-1.5">
@@ -186,6 +234,11 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
               </span>
             </div>
           </div>
+          <AgentPaymentManager
+            agentId={agent.id}
+            totalEarnings={computedTotalEarningsKsh}
+            availableBalance={computedBalanceKsh}
+          />
         </div>
       </header>
 

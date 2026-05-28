@@ -50,6 +50,7 @@ const SAFARICOM_SELECT = `
   safaricom_number,
   alternate_number,
   identification_number,
+  date_of_birth,
   service_package,
   fiber_deal_id,
   portable_deal_id,
@@ -112,7 +113,7 @@ export default async function RegistrationsPage({ searchParams }: RegistrationsP
       `customer_name.ilike.%${escaped}%,email.ilike.%${escaped}%,airtel_number.ilike.%${escaped}%,alternate_number.ilike.%${escaped}%,installation_town.ilike.%${escaped}%,delivery_landmark.ilike.%${escaped}%`
     );
     safaricomQuery = safaricomQuery.or(
-      `customer_name.ilike.%${escaped}%,email.ilike.%${escaped}%,safaricom_number.ilike.%${escaped}%,alternate_number.ilike.%${escaped}%,identification_number.ilike.%${escaped}%,service_package.ilike.%${escaped}%,fiber_region_name.ilike.%${escaped}%,fiber_cluster_name.ilike.%${escaped}%,install_county.ilike.%${escaped}%,install_town.ilike.%${escaped}%,install_landmark.ilike.%${escaped}%`
+      `customer_name.ilike.%${escaped}%,email.ilike.%${escaped}%,safaricom_number.ilike.%${escaped}%,alternate_number.ilike.%${escaped}%,identification_number.ilike.%${escaped}%,date_of_birth.ilike.%${escaped}%,service_package.ilike.%${escaped}%,fiber_region_name.ilike.%${escaped}%,fiber_cluster_name.ilike.%${escaped}%,install_county.ilike.%${escaped}%,install_town.ilike.%${escaped}%,install_landmark.ilike.%${escaped}%`
     );
   }
 

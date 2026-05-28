@@ -165,6 +165,7 @@ export function RegistrationDetailPanel({ registration, open, onClose }: Registr
                 <Field label="Safaricom number" value={registration.safaricom_number} />
                 <Field label="Alternate number" value={registration.alternate_number} />
                 <Field label="Identification number" value={registration.identification_number} />
+                <Field label="Date of birth" value={registration.date_of_birth} />
 
                 <h3 className="mb-1 mt-4 text-xs font-bold uppercase tracking-wider text-gray-400">Product</h3>
                 <Field label="Package" value={registration.preferred_package} />

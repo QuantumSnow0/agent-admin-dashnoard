@@ -11,6 +11,7 @@ export type AdminRegistrationDetailFields = {
   ms_forms_submitted_at?: string | null;
   /** Safaricom raw fields */
   identification_number?: string | null;
+  date_of_birth?: string | null;
   fiber_deal_id?: string | null;
   portable_deal_id?: string | null;
   dedicated_wifi_deal_id?: string | null;
@@ -151,6 +152,7 @@ export function mapSafaricomRegistrationToAdminRow(reg: Record<string, unknown>)
   const created_at = readRowString(o, "created_at", "createdAt");
   const updated_at = readRowString(o, "updated_at", "updatedAt");
   const identification_number = readRowString(o, "identification_number", "identificationNumber");
+  const date_of_birth = readRowString(o, "date_of_birth", "dateOfBirth");
   const fiber_deal_id = readRowString(o, "fiber_deal_id", "fiberDealId");
   const portable_deal_id = readRowString(o, "portable_deal_id", "portableDealId");
   const dedicated_wifi_deal_id = readRowString(o, "dedicated_wifi_deal_id", "dedicatedWifiDealId");
@@ -197,6 +199,7 @@ export function mapSafaricomRegistrationToAdminRow(reg: Record<string, unknown>)
     safaricom_service_package: service_package,
     updated_at,
     identification_number,
+    date_of_birth,
     fiber_deal_id,
     portable_deal_id,
     dedicated_wifi_deal_id,
