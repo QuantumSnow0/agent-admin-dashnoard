@@ -2,14 +2,20 @@ import { createClient } from "@/lib/supabase/server";
 import Image from "next/image";
 import { redirect } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Clock, FileText, CheckCircle2, Users, DollarSign } from "lucide-react";
-import { subDays, eachDayOfInterval, format, startOfDay } from "date-fns";
+import { Clock, FileText, CheckCircle2, Users } from "lucide-react";
+import { subDays } from "date-fns";
 import { DashboardCharts } from "@/components/dashboard/dashboard-charts";
 import { DashboardRealtime } from "@/components/dashboard/dashboard-realtime";
-
-// Revenue per installed registration (KSh) – change these to update earnings everywhere
-const REVENUE_STANDARD = 300;
-const REVENUE_PREMIUM = 500;
+import { ConversionFunnelSection } from "@/components/dashboard/conversion-funnel";
+import { CommissionLiabilityRow } from "@/components/dashboard/commission-liability-row";
+import { GeographyBreakdownSection } from "@/components/dashboard/geography-breakdown";
+import {
+  buildCarrierFunnel,
+  buildChartRangeData,
+  buildConversionFunnel,
+  buildGeographyBreakdown,
+  computeCommissionLiability,
+} from "@/lib/dashboard-chart-data";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -32,7 +38,8 @@ export default async function DashboardPage() {
     redirect("/login?error=admin_access_required");
   }
 
-  // Fetch counts in parallel
+  const thirtyDaysAgo = subDays(new Date(), 30).toISOString();
+
   const [
     { count: totalAgents },
     { count: custRegCount },
@@ -42,6 +49,16 @@ export default async function DashboardPage() {
     { count: safPendingRegs },
     { count: custInstalled },
     { count: safInstalled },
+    { data: custRegsForCharts },
+    { data: safRegsForCharts },
+    { data: custRegsAll },
+    { data: safRegsAll },
+    { data: custGeoRows },
+    { data: safGeoRows },
+    { data: custInstalledAll },
+    { data: safInstalledAll },
+    { data: paymentRows },
+    { data: allAgents },
   ] = await Promise.all([
     supabase.from("agents").select("*", { count: "exact", head: true }),
     supabase.from("customer_registrations").select("*", { count: "exact", head: true }),
@@ -51,56 +68,67 @@ export default async function DashboardPage() {
     supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }).eq("status", "pending"),
     supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("status", "installed"),
     supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }).eq("status", "installed"),
+    supabase
+      .from("customer_registrations")
+      .select("agent_id, created_at, status, preferred_package")
+      .gte("created_at", thirtyDaysAgo),
+    supabase
+      .from("safaricom_registrations")
+      .select(
+        "agent_id, created_at, status, service_package, fiber_deal_id, portable_deal_id, dedicated_wifi_deal_id"
+      )
+      .gte("created_at", thirtyDaysAgo),
+    supabase.from("customer_registrations").select("status"),
+    supabase.from("safaricom_registrations").select("status"),
+    supabase
+      .from("customer_registrations")
+      .select("status, installation_town"),
+    supabase
+      .from("safaricom_registrations")
+      .select(
+        "status, service_package, fiber_region_name, fiber_cluster_name, install_town, install_county"
+      ),
+    supabase
+      .from("customer_registrations")
+      .select("preferred_package")
+      .eq("status", "installed"),
+    supabase
+      .from("safaricom_registrations")
+      .select(
+        "service_package, fiber_deal_id, portable_deal_id, dedicated_wifi_deal_id"
+      )
+      .eq("status", "installed"),
+    supabase.from("agent_payments").select("amount_ksh"),
+    supabase.from("agents").select("id, name, email"),
   ]);
 
   const totalRegistrations = (custRegCount ?? 0) + (safRegCount ?? 0);
   const pendingRegistrations = (custPendingRegs ?? 0) + (safPendingRegs ?? 0);
   const installedCount = (custInstalled ?? 0) + (safInstalled ?? 0);
 
-  const thirtyDaysAgo = subDays(new Date(), 30).toISOString();
+  const custChartRows = custRegsForCharts ?? [];
+  const safChartRows = safRegsForCharts ?? [];
+  const agentsList = allAgents ?? [];
 
-  const [
-    { data: custRegsLast30 },
-    { data: safRegsLast30 },
-    { data: installedRegsAll },
-  ] = await Promise.all([
-    supabase.from("customer_registrations").select("created_at").gte("created_at", thirtyDaysAgo),
-    supabase.from("safaricom_registrations").select("created_at").gte("created_at", thirtyDaysAgo),
-    supabase.from("customer_registrations").select("created_at, preferred_package").eq("status", "installed"),
-  ]);
+  const chartDataByRange = {
+    7: buildChartRangeData(custChartRows, safChartRows, agentsList, 7),
+    30: buildChartRangeData(custChartRows, safChartRows, agentsList, 30),
+  };
 
-  const allRegsLast30 = [...(custRegsLast30 ?? []), ...(safRegsLast30 ?? [])];
+  const overallFunnel = buildConversionFunnel(custRegsAll ?? [], safRegsAll ?? []);
+  const airtelFunnel = buildCarrierFunnel(custRegsAll ?? []);
+  const safaricomFunnel = buildCarrierFunnel(safRegsAll ?? []);
 
-  const premiumCount = installedRegsAll?.filter((r) => r.preferred_package === "premium").length ?? 0;
-  const standardCount = installedRegsAll?.filter((r) => r.preferred_package === "standard").length ?? 0;
-  const totalEarnings = premiumCount * REVENUE_PREMIUM + standardCount * REVENUE_STANDARD;
+  const commissionLiability = computeCommissionLiability(
+    custInstalledAll ?? [],
+    safInstalledAll ?? [],
+    paymentRows ?? []
+  );
 
-  const dayRange = eachDayOfInterval({
-    start: subDays(new Date(), 30),
-    end: new Date(),
-  });
-
-  const registrationsByDay = dayRange.map((day) => {
-    const dayStart = startOfDay(day).getTime();
-    const count =
-      allRegsLast30?.filter((r) => r.created_at && startOfDay(new Date(r.created_at)).getTime() === dayStart).length ?? 0;
-    return { date: format(day, "MMM d"), count };
-  });
-
-  const revenueByDay = dayRange.map((day) => {
-    const dayStart = startOfDay(day).getTime();
-    const dayInstalled =
-      installedRegsAll?.filter((r) => r.created_at && startOfDay(new Date(r.created_at)).getTime() === dayStart) ?? [];
-    const revenue =
-      dayInstalled.reduce((sum, r) => sum + (r.preferred_package === "premium" ? REVENUE_PREMIUM : REVENUE_STANDARD), 0);
-    return { date: format(day, "MMM d"), revenue };
-  });
-
-  const packageMix = [
-    { name: "Standard", value: standardCount },
-    { name: "Premium", value: premiumCount },
-    { name: "Safaricom", value: safInstalled ?? 0 },
-  ];
+  const geographyBreakdown = buildGeographyBreakdown(
+    custGeoRows ?? [],
+    safGeoRows ?? []
+  );
 
   const row1Cards = [
     { title: "Pending approvals", value: pendingApprovals ?? 0, icon: Clock, cardBg: "bg-amber-600" },
@@ -110,30 +138,37 @@ export default async function DashboardPage() {
   const row2Cards = [
     { title: "Total agents", value: totalAgents ?? 0, icon: Users, cardBg: "bg-indigo-600" },
     { title: "Total registrations", value: totalRegistrations ?? 0, icon: FileText, cardBg: "bg-purple-600" },
-    { title: "Total earnings", value: `KSh ${(totalEarnings ?? 0).toLocaleString()}`, icon: DollarSign, cardBg: "bg-teal-600" },
+    {
+      title: "Install rate",
+      value: `${overallFunnel.registeredToInstalledPct}%`,
+      icon: CheckCircle2,
+      cardBg: "bg-teal-600",
+    },
   ];
 
   return (
     <div className="space-y-6 -mt-7 -ml-2">
       <DashboardRealtime />
       <div className="flex flex-row items-center gap-2">
-        <Image src={"/dashboard.png"} alt="dashboard icon" height={22} width={22}/>
-        <h1 className="text-xl font-bold tracking-tight text-gray-900">
-          Dashboard
-        </h1>
+        <Image src={"/dashboard.png"} alt="dashboard icon" height={22} width={22} />
+        <h1 className="text-xl font-bold tracking-tight text-gray-900">Dashboard</h1>
       </div>
 
-      {/* Row 1 */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {row1Cards.map(({ title, value, icon: Icon, cardBg }) => (
           <Card
             key={title}
             className={`relative gap-0 overflow-hidden rounded-none border-0 ${cardBg} py-4 shadow-sm transition-all hover:shadow-md`}
           >
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/30 via-white/5 to-transparent" aria-hidden />
+            <div
+              className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/30 via-white/5 to-transparent"
+              aria-hidden
+            />
             <div className="relative z-10">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 px-4 pb-2 pt-0">
-                <CardTitle className="text-xs font-medium uppercase tracking-wider text-white/90">{title}</CardTitle>
+                <CardTitle className="text-xs font-medium uppercase tracking-wider text-white/90">
+                  {title}
+                </CardTitle>
                 <div className="rounded-none bg-white/20 p-1.5">
                   <Icon className="h-4 w-4 text-white" />
                 </div>
@@ -146,17 +181,21 @@ export default async function DashboardPage() {
         ))}
       </div>
 
-      {/* Row 2 */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {row2Cards.map(({ title, value, icon: Icon, cardBg }) => (
           <Card
             key={title}
             className={`relative gap-0 overflow-hidden rounded-none border-0 ${cardBg} py-4 shadow-sm transition-all hover:shadow-md`}
           >
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/30 via-white/5 to-transparent" aria-hidden />
+            <div
+              className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/30 via-white/5 to-transparent"
+              aria-hidden
+            />
             <div className="relative z-10">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 px-4 pb-2 pt-0">
-                <CardTitle className="text-xs font-medium uppercase tracking-wider text-white/90">{title}</CardTitle>
+                <CardTitle className="text-xs font-medium uppercase tracking-wider text-white/90">
+                  {title}
+                </CardTitle>
                 <div className="rounded-none bg-white/20 p-1.5">
                   <Icon className="h-4 w-4 text-white" />
                 </div>
@@ -169,11 +208,24 @@ export default async function DashboardPage() {
         ))}
       </div>
 
-      <DashboardCharts
-        registrationsByDay={registrationsByDay}
-        revenueByDay={revenueByDay}
-        packageMix={packageMix}
+      <CommissionLiabilityRow
+        totalEarned={commissionLiability.totalEarned}
+        totalPaid={commissionLiability.totalPaid}
+        outstanding={commissionLiability.outstanding}
       />
+
+      <ConversionFunnelSection
+        overall={overallFunnel}
+        airtel={airtelFunnel}
+        safaricom={safaricomFunnel}
+      />
+
+      <GeographyBreakdownSection
+        registrationsByLocation={geographyBreakdown.registrationsByLocation}
+        installedByLocation={geographyBreakdown.installedByLocation}
+      />
+
+      <DashboardCharts chartDataByRange={chartDataByRange} />
     </div>
   );
 }

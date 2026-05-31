@@ -28,17 +28,18 @@ export function getSafaricomDealPriceKes(dealId: string | null | undefined): num
 }
 
 export function getSafaricomCommissionKesForRegistration(row: {
-  service_package: string;
+  service_package?: string | null;
   fiber_deal_id?: string | null;
   portable_deal_id?: string | null;
   dedicated_wifi_deal_id?: string | null;
 }): number {
   let dealId: string | null = null;
-  if (row.service_package === "home_business_fiber") {
+  const pkg = (row.service_package ?? "").trim();
+  if (pkg === "home_business_fiber") {
     dealId = row.fiber_deal_id ?? null;
-  } else if (row.service_package === "safaricom_portable_5g") {
+  } else if (pkg === "safaricom_portable_5g") {
     dealId = row.portable_deal_id ?? null;
-  } else if (row.service_package === "safaricom_dedicated_wifi") {
+  } else if (pkg === "safaricom_dedicated_wifi") {
     dealId = row.dedicated_wifi_deal_id ?? null;
   }
 
