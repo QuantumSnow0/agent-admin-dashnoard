@@ -37,6 +37,8 @@ export type AdminRegistrationListRow = {
   /** Raw `service_package` when `source` is safaricom (for UI badges). */
   safaricom_service_package?: string | null;
   preferred_package: string;
+  /** Airtel only — devices/units (MS Forms totalUnitsRequired). Safaricom: null. */
+  units_required?: number | null;
   installation_town: string | null;
   delivery_landmark: string | null;
   visit_date: string | null;
@@ -105,6 +107,7 @@ export function mapCustomerRegistrationToAdminRow(reg: Record<string, unknown>):
     airtel_number: string | null;
     alternate_number: string | null;
     preferred_package: string;
+    units_required?: number | null;
     installation_town: string | null;
     delivery_landmark: string | null;
     visit_date: string | null;
@@ -121,6 +124,8 @@ export function mapCustomerRegistrationToAdminRow(reg: Record<string, unknown>):
     airtel_number: r.airtel_number,
     alternate_number: r.alternate_number,
     preferred_package: r.preferred_package,
+    units_required:
+      r.units_required != null ? Number(r.units_required) || 1 : 1,
     installation_town: r.installation_town,
     delivery_landmark: r.delivery_landmark,
     visit_date: r.visit_date,
@@ -189,6 +194,7 @@ export function mapSafaricomRegistrationToAdminRow(reg: Record<string, unknown>)
     alternate_number,
     safaricom_number,
     preferred_package,
+    units_required: null,
     installation_town: loc,
     delivery_landmark: null,
     visit_date: null,

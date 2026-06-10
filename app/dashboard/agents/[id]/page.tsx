@@ -4,12 +4,13 @@ import Image from "next/image";
 import Link from "next/link";
 import { ChevronLeft, Wallet, TrendingUp, Users, Package, Sparkles, Bell } from "lucide-react";
 import { AgentActions } from "@/components/agents/agent-actions";
+import { AgentRatingStars } from "@/components/agents/agent-rating-stars";
 import { AgentCustomersRegistered } from "@/components/agents/agent-customers-registered";
 import { AgentPaymentManager } from "@/components/agents/agent-payment-manager";
 import {
-  PREMIUM_COMMISSION,
-  STANDARD_COMMISSION,
+  getAirtelCommissionKesForRegistration,
   getSafaricomCommissionKesForRegistration,
+  normalizeUnitsRequired,
 } from "@/lib/commissions";
 import {
   mapCustomerRegistrationToAdminRow,
@@ -63,21 +64,24 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
   const [
     { count: custRegCount },
     { count: safRegCount },
-    { count: installedPremium },
-    { count: installedStandard },
+    { data: airtelInstalledRows },
     { data: customerRegs },
     { data: safaricomRegs },
     { data: paymentRows, error: paymentRowsError },
     { data: safInstalledRows, error: safInstalledRowsError },
+    { data: appRating },
   ] = await Promise.all([
     supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("agent_id", id),
     supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }).eq("agent_id", id),
-    supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("agent_id", id).eq("status", "installed").eq("preferred_package", "premium"),
-    supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("agent_id", id).eq("status", "installed").eq("preferred_package", "standard"),
+    supabase
+      .from("customer_registrations")
+      .select("preferred_package, units_required")
+      .eq("agent_id", id)
+      .eq("status", "installed"),
     supabase
       .from("customer_registrations")
       .select(
-        "id, agent_id, customer_name, email, airtel_number, alternate_number, preferred_package, installation_town, delivery_landmark, visit_date, visit_time, status, created_at"
+        "id, agent_id, customer_name, email, airtel_number, alternate_number, preferred_package, units_required, installation_town, delivery_landmark, visit_date, visit_time, status, created_at"
       )
       .eq("agent_id", id)
       .order("created_at", { ascending: false }),
@@ -97,14 +101,24 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
       .select("service_package, fiber_deal_id, portable_deal_id, dedicated_wifi_deal_id")
       .eq("agent_id", id)
       .eq("status", "installed"),
+    supabase
+      .from("app_ratings")
+      .select("score, created_at, opened_play_store")
+      .eq("agent_id", id)
+      .maybeSingle(),
   ]);
 
   const totalRegistrations = (custRegCount ?? 0) + (safRegCount ?? 0);
-  const installedPremiumCount = installedPremium ?? 0;
-  const installedStandardCount = installedStandard ?? 0;
-  const airtelCommissionKsh =
-    installedPremiumCount * PREMIUM_COMMISSION +
-    installedStandardCount * STANDARD_COMMISSION;
+  const installedPremiumUnits = (airtelInstalledRows ?? [])
+    .filter((r) => r.preferred_package === "premium")
+    .reduce((sum, r) => sum + normalizeUnitsRequired(r.units_required), 0);
+  const installedStandardUnits = (airtelInstalledRows ?? [])
+    .filter((r) => r.preferred_package === "standard")
+    .reduce((sum, r) => sum + normalizeUnitsRequired(r.units_required), 0);
+  const airtelCommissionKsh = (airtelInstalledRows ?? []).reduce(
+    (sum, row) => sum + getAirtelCommissionKesForRegistration(row),
+    0
+  );
   const safaricomCommissionKsh =
     safInstalledRowsError || !safInstalledRows
       ? 0
@@ -221,17 +235,37 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
             </div>
             <div className="flex items-center gap-1.5">
               <Sparkles className="h-3.5 w-3.5 shrink-0 text-violet-600" />
-              <span className="text-gray-500">Premium</span>
+              <span className="text-gray-500">Premium units</span>
               <span className="font-semibold tabular-nums text-gray-900">
-                {(installedPremium ?? 0).toLocaleString()}
+                {installedPremiumUnits.toLocaleString()}
               </span>
             </div>
             <div className="flex items-center gap-1.5">
               <Package className="h-3.5 w-3.5 shrink-0 text-sky-600" />
-              <span className="text-gray-500">Standard</span>
+              <span className="text-gray-500">Standard units</span>
               <span className="font-semibold tabular-nums text-gray-900">
-                {(installedStandard ?? 0).toLocaleString()}
+                {installedStandardUnits.toLocaleString()}
               </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-gray-500">App rating</span>
+              <AgentRatingStars
+                score={appRating?.score}
+                variant="default"
+                size="md"
+                showScore
+              />
+              {appRating?.created_at ? (
+                <span className="text-gray-400">
+                  ·{" "}
+                  {new Date(appRating.created_at).toLocaleDateString("en-GB", {
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric",
+                  })}
+                  {appRating.opened_play_store ? " · Play Store" : ""}
+                </span>
+              ) : null}
             </div>
           </div>
           <AgentPaymentManager

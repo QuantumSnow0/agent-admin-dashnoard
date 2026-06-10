@@ -6,6 +6,7 @@ import { X, ExternalLink } from "lucide-react";
 import type { AdminRegistrationRow } from "@/lib/admin-registrations";
 import { RegistrationPackageBadge } from "@/components/registrations/registration-package-badge";
 import { RegistrationStatusActions } from "@/components/agents/registration-status-actions";
+import { formatRegistrationStatusLabel } from "@/lib/registration-statuses";
 import { Button } from "@/components/ui/button";
 
 function fmtDate(iso: string | null | undefined): string {
@@ -99,8 +100,8 @@ export function RegistrationDetailPanel({ registration, open, onClose }: Registr
             </h2>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <RegistrationPackageBadge reg={registration} />
-              <span className="inline-flex rounded border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs font-medium capitalize text-gray-700">
-                {registration.status}
+              <span className="inline-flex rounded border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs font-medium text-gray-700">
+                {formatRegistrationStatusLabel(registration.status)}
               </span>
             </div>
           </div>
@@ -136,6 +137,10 @@ export function RegistrationDetailPanel({ registration, open, onClose }: Registr
                 <Field label="Airtel number" value={registration.airtel_number} />
                 <Field label="Alternate number" value={registration.alternate_number} />
                 <Field label="Preferred package" value={registration.preferred_package} />
+                <Field
+                  label="Quantity (units)"
+                  value={String(registration.units_required ?? 1)}
+                />
 
                 <h3 className="mb-1 mt-4 text-xs font-bold uppercase tracking-wider text-gray-400">Installation</h3>
                 <Field label="Installation town" value={registration.installation_town} />

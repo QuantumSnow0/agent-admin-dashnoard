@@ -10,9 +10,15 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreVertical, Clock, CheckCircle2, Package } from "lucide-react";
+import {
+  MoreVertical,
+  Clock,
+  Package,
+  XCircle,
+  Copy,
+  Ban,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-
 export type RegistrationSource = "airtel" | "safaricom";
 
 interface RegistrationStatusActionsProps {
@@ -25,8 +31,10 @@ interface RegistrationStatusActionsProps {
 
 const REGISTRATION_STATUSES = [
   { value: "pending", label: "Pending", icon: Clock },
-  { value: "approved", label: "Approved", icon: CheckCircle2 },
   { value: "installed", label: "Installed", icon: Package },
+  { value: "rejected", label: "Rejected", icon: XCircle },
+  { value: "duplicate", label: "Duplicate", icon: Copy },
+  { value: "cancelled", label: "Cancelled", icon: Ban },
 ] as const;
 
 export function RegistrationStatusActions({ registration }: RegistrationStatusActionsProps) {
@@ -63,7 +71,7 @@ export function RegistrationStatusActions({ registration }: RegistrationStatusAc
           <MoreVertical className="h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-44">
+      <DropdownMenuContent align="end" className="w-48">
         <DropdownMenuLabel>Set status</DropdownMenuLabel>
         {REGISTRATION_STATUSES.map(({ value, label, icon: Icon }) => (
           <DropdownMenuItem
@@ -76,6 +84,11 @@ export function RegistrationStatusActions({ registration }: RegistrationStatusAc
             {label}
           </DropdownMenuItem>
         ))}
+        {registration.status === "approved" ? (
+          <DropdownMenuItem disabled className="text-xs text-amber-700">
+            Legacy &quot;approved&quot; — pick a new status
+          </DropdownMenuItem>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );

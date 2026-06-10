@@ -80,7 +80,32 @@ export default async function AgentsPage({ searchParams }: AgentsPageProps) {
     agentsQuery = agentsQuery.lte("created_at", `${dateTo}T23:59:59.999Z`);
   }
 
-  const { data: agentsList, count: filteredCount } = await agentsQuery.range(rangeFrom, rangeTo);
+  const [{ data: agentsList, count: filteredCount }, { data: appRatings }] =
+    await Promise.all([
+      agentsQuery.range(rangeFrom, rangeTo),
+      supabase
+        .from("app_ratings")
+        .select("agent_id, score, created_at, opened_play_store"),
+    ]);
+
+  const ratingsByAgentId = new Map(
+    (appRatings ?? []).map((rating) => [rating.agent_id, rating])
+  );
+
+  const agentsWithRatings = (agentsList ?? []).map((agentRow) => {
+    const rating = ratingsByAgentId.get(agentRow.id);
+    return {
+      ...agentRow,
+      app_rating: rating
+        ? {
+            score: rating.score,
+            created_at: rating.created_at,
+            opened_play_store: rating.opened_play_store,
+          }
+        : null,
+    };
+  });
+
   const totalFiltered = filteredCount ?? 0;
   const totalPages = Math.max(1, Math.ceil(totalFiltered / PAGE_SIZE));
 
@@ -94,7 +119,7 @@ export default async function AgentsPage({ searchParams }: AgentsPageProps) {
       </div>
 
       <AgentsView
-        agentsList={agentsList ?? []}
+        agentsList={agentsWithRatings}
         counts={{
           registered: registered ?? 0,
           approved: approved ?? 0,

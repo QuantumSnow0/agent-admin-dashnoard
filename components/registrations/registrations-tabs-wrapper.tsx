@@ -9,8 +9,11 @@ interface RegistrationsTabsWrapperProps {
   counts: {
     all: number;
     pending: number;
-    approved: number;
     installed: number;
+    closed: number;
+    rejected: number;
+    duplicate: number;
+    cancelled: number;
   };
   children: ReactNode;
 }
@@ -24,18 +27,16 @@ export function RegistrationsTabsWrapper({
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
   
-  // Get status filter from URL params (client-side)
   const urlStatusFilter = searchParams.get("status") || "all";
   const [statusFilter, setStatusFilter] = useState(urlStatusFilter);
 
-  // Update local state when URL changes
   useEffect(() => {
     const newStatusFilter = searchParams.get("status") || "all";
     setStatusFilter(newStatusFilter);
   }, [searchParams]);
 
   const handleTabChange = (value: string) => {
-    setStatusFilter(value); // Update local state immediately for UI responsiveness
+    setStatusFilter(value);
     const params = new URLSearchParams(searchParams.toString());
     if (value === "all") {
       params.delete("status");
@@ -43,21 +44,21 @@ export function RegistrationsTabsWrapper({
       params.set("status", value);
     }
     const newUrl = `/dashboard/registrations${params.toString() ? `?${params.toString()}` : ""}`;
-    
-    // Use replace instead of push to avoid history buildup
     router.replace(newUrl);
   };
 
-  // Use URL status filter as the source of truth for rendering content
   const activeFilter = searchParams.get("status") || "all";
 
   return (
     <Tabs value={statusFilter} onValueChange={handleTabChange} className="w-full">
-      <TabsList className="grid w-full grid-cols-4">
+      <TabsList className="grid w-full grid-cols-3 sm:grid-cols-7">
         <TabsTrigger value="all" disabled={isPending}>All ({counts.all})</TabsTrigger>
         <TabsTrigger value="pending" disabled={isPending}>Pending ({counts.pending})</TabsTrigger>
-        <TabsTrigger value="approved" disabled={isPending}>Approved ({counts.approved})</TabsTrigger>
         <TabsTrigger value="installed" disabled={isPending}>Installed ({counts.installed})</TabsTrigger>
+        <TabsTrigger value="closed" disabled={isPending}>Closed ({counts.closed})</TabsTrigger>
+        <TabsTrigger value="rejected" disabled={isPending}>Rejected ({counts.rejected})</TabsTrigger>
+        <TabsTrigger value="duplicate" disabled={isPending}>Duplicate ({counts.duplicate})</TabsTrigger>
+        <TabsTrigger value="cancelled" disabled={isPending}>Cancelled ({counts.cancelled})</TabsTrigger>
       </TabsList>
 
       <TabsContent value={statusFilter} key={activeFilter} className="mt-6">

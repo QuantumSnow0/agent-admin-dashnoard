@@ -1,13 +1,15 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users, CheckCircle2, Clock, XCircle, Ban, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { AgentActions } from "@/components/agents/agent-actions";
+import { AgentRatingStars } from "@/components/agents/agent-rating-stars";
+import { useDebouncedSearchParam } from "@/lib/hooks/use-debounced-search-param";
 
-const SEARCH_DEBOUNCE_MS = 300;
+const baseHref = "/dashboard/agents";
 
 type AgentStatus = "all" | "approved" | "pending" | "rejected" | "banned";
 
@@ -21,6 +23,11 @@ type AgentRow = {
   area: string | null;
   status: string;
   created_at: string | null;
+  app_rating?: {
+    score: number;
+    created_at: string;
+    opened_play_store: boolean;
+  } | null;
 };
 
 const agentCards: { title: string; icon: typeof Users; cardBg: string; filter: AgentStatus }[] = [
@@ -57,14 +64,8 @@ export function AgentsView({
   dateTo,
 }: AgentsViewProps) {
   const router = useRouter();
-  const [searchInput, setSearchInput] = useState(searchQuery);
   const getValue = (f: AgentStatus) =>
     f === "all" ? counts.registered : counts[f];
-
-  // Sync search input when URL/searchQuery changes (e.g. after navigation)
-  useEffect(() => {
-    setSearchInput(searchQuery);
-  }, [searchQuery]);
 
   const applyFilters = useCallback(
     (q: string, from: string, to: string, page = 1) => {
@@ -74,20 +75,23 @@ export function AgentsView({
       if (from) params.set("from", from);
       if (to) params.set("to", to);
       if (page > 1) params.set("page", String(page));
-      router.replace(`${baseHref}?${params.toString()}`, { scroll: false });
+      const query = params.toString();
+      router.replace(query ? `${baseHref}?${query}` : baseHref, { scroll: false });
     },
     [currentFilter, router]
   );
 
-  // Debounced search: update URL when user stops typing
-  useEffect(() => {
-    const t = setTimeout(() => {
-      if (searchInput.trim() !== searchQuery) {
-        applyFilters(searchInput, dateFrom, dateTo, 1);
-      }
-    }, SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(t);
-  }, [searchInput, searchQuery, dateFrom, dateTo, applyFilters]);
+  const commitSearchQuery = useCallback(
+    (q: string) => {
+      applyFilters(q, dateFrom, dateTo, 1);
+    },
+    [applyFilters, dateFrom, dateTo]
+  );
+
+  const { searchInput, searchField } = useDebouncedSearchParam(
+    searchQuery,
+    commitSearchQuery
+  );
 
   const handleDateFromChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     applyFilters(searchInput, e.target.value, dateTo, 1);
@@ -99,7 +103,6 @@ export function AgentsView({
   const from = totalFiltered === 0 ? 0 : (currentPage - 1) * pageSize + 1;
   const to = Math.min(currentPage * pageSize, totalFiltered);
 
-  const baseHref = "/dashboard/agents";
   const params = new URLSearchParams();
   if (currentFilter !== "all") params.set("status", currentFilter);
   if (searchQuery) params.set("q", searchQuery);
@@ -150,8 +153,7 @@ export function AgentsView({
         <Search className="h-4 w-4 shrink-0 text-gray-400" />
         <input
           type="search"
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
+          {...searchField}
           placeholder="Search name, email, phone, town, area..."
           className="h-8 w-40 shrink-0 rounded border border-gray-200 bg-white px-2.5 text-sm placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 sm:w-52"
           aria-label="Search agents"
@@ -205,9 +207,10 @@ export function AgentsView({
             <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
             <div className="grid grid-cols-12 gap-4 border-b border-gray-200 bg-gray-50/80 px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
               <div className="col-span-3">Name</div>
-              <div className="col-span-3">Email</div>
+              <div className="col-span-2">Email</div>
               <div className="col-span-2">Phone</div>
               <div className="col-span-2">Location</div>
+              <div className="col-span-1">Rating</div>
               <div className="col-span-1">Joined</div>
               <div className="col-span-1 text-right">Actions</div>
             </div>
@@ -228,12 +231,15 @@ export function AgentsView({
                     className={`grid grid-cols-12 gap-4 px-6 py-4 text-sm align-middle border-b border-white/10 last:border-b-0 text-white ${rowBg}`}
                   >
                     <div className="col-span-3 truncate font-medium">{a.name || "—"}</div>
-                    <div className="col-span-3 truncate text-white/90">{a.email || "—"}</div>
+                    <div className="col-span-2 truncate text-white/90">{a.email || "—"}</div>
                     <div className="col-span-2 truncate text-white/90">
                       {[a.airtel_phone, a.safaricom_phone].filter(Boolean).join(" · ") || "—"}
                     </div>
                     <div className="col-span-2 truncate text-white/90">
                       {[a.town, a.area].filter(Boolean).join(", ") || "—"}
+                    </div>
+                    <div className="col-span-1">
+                      <AgentRatingStars score={a.app_rating?.score} />
                     </div>
                     <div className="col-span-1 text-white/90 text-xs">
                       {a.created_at

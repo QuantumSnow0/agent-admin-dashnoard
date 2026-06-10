@@ -1,5 +1,22 @@
-export const STANDARD_COMMISSION = 300;
-export const PREMIUM_COMMISSION = 500;
+export const STANDARD_COMMISSION = 500;
+export const PREMIUM_COMMISSION = 700;
+
+export function normalizeUnitsRequired(value: unknown): number {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.min(99, Math.floor(n));
+}
+
+/** Airtel commission for one registration (package rate × units). */
+export function getAirtelCommissionKesForRegistration(row: {
+  preferred_package?: string | null;
+  units_required?: number | null;
+}): number {
+  const units = normalizeUnitsRequired(row.units_required);
+  const rate =
+    row.preferred_package === "premium" ? PREMIUM_COMMISSION : STANDARD_COMMISSION;
+  return units * rate;
+}
 
 const AGENT_COMMISSION_SHARE = 0.3;
 const MIN_COMMISSION_KES = 1000;

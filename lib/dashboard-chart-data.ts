@@ -1,12 +1,10 @@
 import { eachDayOfInterval, format, startOfDay, subDays } from "date-fns";
 import {
-  PREMIUM_COMMISSION,
-  STANDARD_COMMISSION,
+  getAirtelCommissionKesForRegistration,
   getSafaricomCommissionKesForRegistration,
+  normalizeUnitsRequired,
 } from "@/lib/commissions";
-
-const REVENUE_STANDARD = STANDARD_COMMISSION;
-const REVENUE_PREMIUM = PREMIUM_COMMISSION;
+import { isClosedRegistrationStatus } from "@/lib/registration-statuses";
 
 export type RegistrationsByDay = { date: string; count: number }[];
 export type RevenueByDay = { date: string; revenue: number }[];
@@ -32,6 +30,7 @@ type CustRegRow = DatedRow & {
   agent_id: string | null;
   status: string;
   preferred_package?: string | null;
+  units_required?: number | null;
 };
 
 type SafRegRow = DatedRow & {
@@ -130,8 +129,7 @@ export function buildChartRangeData(
     );
 
     const airtelRevenue = dayCustInstalled.reduce(
-      (sum, r) =>
-        sum + (r.preferred_package === "premium" ? REVENUE_PREMIUM : REVENUE_STANDARD),
+      (sum, r) => sum + getAirtelCommissionKesForRegistration(r),
       0
     );
     const safRevenue = daySafInstalled.reduce(
@@ -144,8 +142,12 @@ export function buildChartRangeData(
 
   const custInstalledInRange = custInRange.filter((r) => r.status === "installed");
   const safInstalledInRange = safInRange.filter((r) => r.status === "installed");
-  const premiumCount = custInstalledInRange.filter((r) => r.preferred_package === "premium").length;
-  const standardCount = custInstalledInRange.filter((r) => r.preferred_package === "standard").length;
+  const premiumCount = custInstalledInRange
+    .filter((r) => r.preferred_package === "premium")
+    .reduce((sum, r) => sum + normalizeUnitsRequired(r.units_required), 0);
+  const standardCount = custInstalledInRange
+    .filter((r) => r.preferred_package === "standard")
+    .reduce((sum, r) => sum + normalizeUnitsRequired(r.units_required), 0);
 
   const packageMix: PackageMix = [
     { name: "Standard", value: standardCount },
@@ -163,7 +165,7 @@ export function buildChartRangeData(
 }
 
 export function computeCommissionLiability(
-  custInstalled: { preferred_package?: string | null }[],
+  custInstalled: { preferred_package?: string | null; units_required?: number | null }[],
   safInstalled: {
     service_package?: string;
     fiber_deal_id?: string | null;
@@ -172,9 +174,10 @@ export function computeCommissionLiability(
   }[],
   paymentRows: { amount_ksh?: number | string | null }[]
 ) {
-  const premiumCount = custInstalled.filter((r) => r.preferred_package === "premium").length;
-  const standardCount = custInstalled.filter((r) => r.preferred_package === "standard").length;
-  const airtelEarned = premiumCount * PREMIUM_COMMISSION + standardCount * STANDARD_COMMISSION;
+  const airtelEarned = custInstalled.reduce(
+    (sum, row) => sum + getAirtelCommissionKesForRegistration(row),
+    0
+  );
   const safaricomEarned = safInstalled.reduce(
     (sum, row) => sum + getSafaricomCommissionKesForRegistration(row),
     0
@@ -191,11 +194,10 @@ export function computeCommissionLiability(
 
 export type ConversionFunnel = {
   registered: number;
-  approved: number;
   installed: number;
-  registeredToApprovedPct: number;
-  approvedToInstalledPct: number;
+  closed: number;
   registeredToInstalledPct: number;
+  closedPct: number;
 };
 
 export function buildConversionFunnel(
@@ -204,19 +206,18 @@ export function buildConversionFunnel(
 ): ConversionFunnel {
   const all = [...custRegs, ...safRegs];
   const registered = all.length;
-  const approved = all.filter((r) => r.status === "approved" || r.status === "installed").length;
   const installed = all.filter((r) => r.status === "installed").length;
+  const closed = all.filter((r) => isClosedRegistrationStatus(r.status)).length;
 
   const pct = (part: number, whole: number) =>
     whole > 0 ? Math.round((part / whole) * 100) : 0;
 
   return {
     registered,
-    approved,
     installed,
-    registeredToApprovedPct: pct(approved, registered),
-    approvedToInstalledPct: pct(installed, approved),
+    closed,
     registeredToInstalledPct: pct(installed, registered),
+    closedPct: pct(closed, registered),
   };
 }
 

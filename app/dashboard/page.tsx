@@ -9,6 +9,8 @@ import { DashboardRealtime } from "@/components/dashboard/dashboard-realtime";
 import { ConversionFunnelSection } from "@/components/dashboard/conversion-funnel";
 import { CommissionLiabilityRow } from "@/components/dashboard/commission-liability-row";
 import { GeographyBreakdownSection } from "@/components/dashboard/geography-breakdown";
+import { AppRatingsChart } from "@/components/dashboard/app-ratings-chart";
+import { buildAppRatingSummary } from "@/lib/app-rating-chart-data";
 import {
   buildCarrierFunnel,
   buildChartRangeData,
@@ -59,6 +61,7 @@ export default async function DashboardPage() {
     { data: safInstalledAll },
     { data: paymentRows },
     { data: allAgents },
+    { data: appRatings },
   ] = await Promise.all([
     supabase.from("agents").select("*", { count: "exact", head: true }),
     supabase.from("customer_registrations").select("*", { count: "exact", head: true }),
@@ -70,7 +73,7 @@ export default async function DashboardPage() {
     supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }).eq("status", "installed"),
     supabase
       .from("customer_registrations")
-      .select("agent_id, created_at, status, preferred_package")
+      .select("agent_id, created_at, status, preferred_package, units_required")
       .gte("created_at", thirtyDaysAgo),
     supabase
       .from("safaricom_registrations")
@@ -90,7 +93,7 @@ export default async function DashboardPage() {
       ),
     supabase
       .from("customer_registrations")
-      .select("preferred_package")
+      .select("preferred_package, units_required")
       .eq("status", "installed"),
     supabase
       .from("safaricom_registrations")
@@ -100,6 +103,7 @@ export default async function DashboardPage() {
       .eq("status", "installed"),
     supabase.from("agent_payments").select("amount_ksh"),
     supabase.from("agents").select("id, name, email"),
+    supabase.from("app_ratings").select("score, opened_play_store, created_at"),
   ]);
 
   const totalRegistrations = (custRegCount ?? 0) + (safRegCount ?? 0);
@@ -129,6 +133,8 @@ export default async function DashboardPage() {
     custGeoRows ?? [],
     safGeoRows ?? []
   );
+
+  const appRatingSummary = buildAppRatingSummary(appRatings ?? []);
 
   const row1Cards = [
     { title: "Pending approvals", value: pendingApprovals ?? 0, icon: Clock, cardBg: "bg-amber-600" },
@@ -224,6 +230,8 @@ export default async function DashboardPage() {
         registrationsByLocation={geographyBreakdown.registrationsByLocation}
         installedByLocation={geographyBreakdown.installedByLocation}
       />
+
+      <AppRatingsChart summary={appRatingSummary} />
 
       <DashboardCharts chartDataByRange={chartDataByRange} />
     </div>

@@ -1,7 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { FileText, Clock, CheckCircle2, Package } from "lucide-react";
+import { FileText, Clock, Package, XCircle } from "lucide-react";
+import { REGISTRATION_CLOSED_STATUSES } from "@/lib/registration-statuses";
 import Link from "next/link";
 import { RegistrationsView } from "@/components/registrations/registrations-view";
 import {
@@ -29,6 +30,7 @@ const CUSTOMER_SELECT = `
   airtel_number,
   alternate_number,
   preferred_package,
+  units_required,
   installation_town,
   delivery_landmark,
   installation_location,
@@ -99,7 +101,10 @@ export default async function RegistrationsPage({ searchParams }: RegistrationsP
     .select(SAFARICOM_SELECT)
     .order("created_at", { ascending: false });
 
-  if (statusFilter !== "all") {
+  if (statusFilter === "closed") {
+    customerQuery = customerQuery.in("status", REGISTRATION_CLOSED_STATUSES);
+    safaricomQuery = safaricomQuery.in("status", REGISTRATION_CLOSED_STATUSES);
+  } else if (statusFilter !== "all") {
     customerQuery = customerQuery.eq("status", statusFilter);
     safaricomQuery = safaricomQuery.eq("status", statusFilter);
   }
@@ -125,8 +130,12 @@ export default async function RegistrationsPage({ searchParams }: RegistrationsP
     { count: safTotal },
     { count: custPending },
     { count: safPending },
-    { count: custApproved },
-    { count: safApproved },
+    { count: custRejected },
+    { count: safRejected },
+    { count: custDuplicate },
+    { count: safDuplicate },
+    { count: custCancelled },
+    { count: safCancelled },
     { count: custInstalled },
     { count: safInstalled },
   ] = await Promise.all([
@@ -137,8 +146,12 @@ export default async function RegistrationsPage({ searchParams }: RegistrationsP
     supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }),
     supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("status", "pending"),
     supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }).eq("status", "pending"),
-    supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("status", "approved"),
-    supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }).eq("status", "approved"),
+    supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("status", "rejected"),
+    supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }).eq("status", "rejected"),
+    supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("status", "duplicate"),
+    supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }).eq("status", "duplicate"),
+    supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("status", "cancelled"),
+    supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }).eq("status", "cancelled"),
     supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("status", "installed"),
     supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }).eq("status", "installed"),
   ]);
@@ -155,14 +168,17 @@ export default async function RegistrationsPage({ searchParams }: RegistrationsP
 
   const totalCount = (custTotal ?? 0) + (safTotal ?? 0);
   const pendingCount = (custPending ?? 0) + (safPending ?? 0);
-  const approvedCount = (custApproved ?? 0) + (safApproved ?? 0);
+  const rejectedCount = (custRejected ?? 0) + (safRejected ?? 0);
+  const duplicateCount = (custDuplicate ?? 0) + (safDuplicate ?? 0);
+  const cancelledCount = (custCancelled ?? 0) + (safCancelled ?? 0);
+  const closedCount = rejectedCount + duplicateCount + cancelledCount;
   const installedCount = (custInstalled ?? 0) + (safInstalled ?? 0);
 
   const countCards = [
-    { title: "All", value: totalCount, icon: FileText, cardBg: "bg-slate-600" },
-    { title: "Pending", value: pendingCount, icon: Clock, cardBg: "bg-amber-600" },
-    { title: "Approved", value: approvedCount, icon: CheckCircle2, cardBg: "bg-blue-600" },
-    { title: "Installed", value: installedCount, icon: Package, cardBg: "bg-emerald-600" },
+    { title: "All", value: totalCount, href: "/dashboard/registrations", icon: FileText, cardBg: "bg-slate-600" },
+    { title: "Pending", value: pendingCount, href: "/dashboard/registrations?status=pending", icon: Clock, cardBg: "bg-amber-600" },
+    { title: "Installed", value: installedCount, href: "/dashboard/registrations?status=installed", icon: Package, cardBg: "bg-emerald-600" },
+    { title: "Closed", value: closedCount, href: "/dashboard/registrations?status=closed", icon: XCircle, cardBg: "bg-gray-600" },
   ];
 
   return (
@@ -172,15 +188,12 @@ export default async function RegistrationsPage({ searchParams }: RegistrationsP
         <h1 className="text-xl font-bold tracking-tight text-gray-900">Customer Registrations</h1>
       </div>
       <p className="text-sm text-gray-600">
-        View and manage Airtel and Safaricom registrations. Change status to move registrations through the pipeline.
+        Pending = awaiting outcome. Installed = commission earned. Use Rejected, Duplicate, or Cancelled when the order will not be installed.
       </p>
 
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-        {countCards.map(({ title, value, icon: Icon, cardBg }) => (
-          <Link
-            key={title}
-            href={title === "All" ? "/dashboard/registrations" : `/dashboard/registrations?status=${title.toLowerCase()}`}
-          >
+        {countCards.map(({ title, value, href, icon: Icon, cardBg }) => (
+          <Link key={title} href={href}>
             <Card
               className={`relative gap-0 overflow-hidden rounded-none border-2 py-4 shadow-sm transition-all hover:shadow-md ${cardBg} border-transparent hover:border-white/30`}
             >
@@ -214,8 +227,11 @@ export default async function RegistrationsPage({ searchParams }: RegistrationsP
         counts={{
           all: totalCount,
           pending: pendingCount,
-          approved: approvedCount,
           installed: installedCount,
+          closed: closedCount,
+          rejected: rejectedCount,
+          duplicate: duplicateCount,
+          cancelled: cancelledCount,
         }}
       />
     </div>

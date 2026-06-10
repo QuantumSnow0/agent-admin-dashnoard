@@ -10,14 +10,14 @@ function FunnelColumn({
   const steps = [
     { name: "Registered", value: funnel.registered, pct: null },
     {
-      name: "Approved+",
-      value: funnel.approved,
-      pct: funnel.registeredToApprovedPct,
-    },
-    {
       name: "Installed",
       value: funnel.installed,
-      pct: funnel.approvedToInstalledPct,
+      pct: funnel.registeredToInstalledPct,
+    },
+    {
+      name: "Not installed",
+      value: funnel.closed,
+      pct: funnel.closedPct,
     },
   ];
 
@@ -42,13 +42,15 @@ function FunnelColumn({
             </div>
             <div className="h-2 bg-gray-100">
               <div
-                className="h-2 bg-indigo-600 transition-all"
+                className={`h-2 transition-all ${
+                  step.name === "Not installed" ? "bg-gray-400" : "bg-indigo-600"
+                }`}
                 style={{ width: `${Math.max(4, (step.value / max) * 100)}%` }}
               />
             </div>
             {index === steps.length - 1 ? (
               <p className="mt-2 text-xs text-gray-500">
-                Overall conversion: {funnel.registeredToInstalledPct}%
+                Install rate: {funnel.registeredToInstalledPct}%
               </p>
             ) : null}
           </div>
