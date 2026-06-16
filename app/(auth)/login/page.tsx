@@ -21,6 +21,8 @@ export default function LoginPage() {
     const errorParam = searchParams.get("error");
     if (errorParam === "admin_access_required") {
       setError("Admin access required. Please log in with an admin account.");
+    } else if (errorParam === "super_admin_access_required") {
+      setError("Super admin access required.");
     }
   }, [searchParams]);
 
@@ -49,7 +51,7 @@ export default function LoginPage() {
       
       const { data: agent, error: agentError } = await supabase
         .from("agents")
-        .select("is_admin, id, email, status")
+        .select("is_admin, is_super_admin, id, email, status")
         .eq("id", authData.user.id)
         .single();
 
@@ -85,19 +87,25 @@ export default function LoginPage() {
         status: agent.status,
       });
 
-      if (!agent.is_admin) {
-        console.error("⚠️ [Login] User is not an admin. is_admin:", agent.is_admin);
-        // User is not admin - sign out and show error
+      if (!agent.is_admin && !agent.is_super_admin) {
+        console.error("⚠️ [Login] User is not an admin or super admin.");
         await supabase.auth.signOut();
         setError("Access denied. Admin privileges required.");
         setLoading(false);
         return;
       }
 
-      console.log("✅ [Login] Admin access verified, redirecting to dashboard");
+      console.log("✅ [Login] Access verified, redirecting");
+
+      if (agent.is_super_admin && !agent.is_admin) {
+        router.push("/super-admin");
+      } else {
+        router.push("/dashboard");
+      }
+      router.refresh();
+      return;
     }
 
-    // Step 3: User is admin - redirect to dashboard
     router.push("/dashboard");
     router.refresh();
   };
