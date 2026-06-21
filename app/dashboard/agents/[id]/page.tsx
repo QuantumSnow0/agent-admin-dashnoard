@@ -10,8 +10,11 @@ import { AgentPaymentManager } from "@/components/agents/agent-payment-manager";
 import {
   getAirtelCommissionKesForRegistration,
   getSafaricomCommissionKesForRegistration,
-  normalizeUnitsRequired,
 } from "@/lib/commissions";
+import {
+  getEffectiveCommissionPackage,
+  getEffectiveCommissionUnits,
+} from "@/lib/airtel-commission-effective";
 import {
   mapCustomerRegistrationToAdminRow,
   mapSafaricomRegistrationToAdminRow,
@@ -75,13 +78,13 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
     supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }).eq("agent_id", id),
     supabase
       .from("customer_registrations")
-      .select("preferred_package, units_required")
+      .select("preferred_package, units_required, commission_package, commission_units")
       .eq("agent_id", id)
       .eq("status", "installed"),
     supabase
       .from("customer_registrations")
       .select(
-        "id, agent_id, customer_name, email, airtel_number, alternate_number, preferred_package, units_required, installation_town, delivery_landmark, visit_date, visit_time, status, created_at"
+        "id, agent_id, customer_name, email, airtel_number, alternate_number, preferred_package, units_required, commission_package, commission_units, installation_town, delivery_landmark, visit_date, visit_time, status, created_at"
       )
       .eq("agent_id", id)
       .order("created_at", { ascending: false }),
@@ -110,13 +113,14 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
 
   const totalRegistrations = (custRegCount ?? 0) + (safRegCount ?? 0);
   const installedPremiumUnits = (airtelInstalledRows ?? [])
-    .filter((r) => r.preferred_package === "premium")
-    .reduce((sum, r) => sum + normalizeUnitsRequired(r.units_required), 0);
+    .filter((r) => getEffectiveCommissionPackage(r) === "premium")
+    .reduce((sum, r) => sum + getEffectiveCommissionUnits(r), 0);
   const installedStandardUnits = (airtelInstalledRows ?? [])
-    .filter((r) => r.preferred_package === "standard")
-    .reduce((sum, r) => sum + normalizeUnitsRequired(r.units_required), 0);
+    .filter((r) => getEffectiveCommissionPackage(r) === "standard")
+    .reduce((sum, r) => sum + getEffectiveCommissionUnits(r), 0);
   const airtelCommissionKsh = (airtelInstalledRows ?? []).reduce(
-    (sum, row) => sum + getAirtelCommissionKesForRegistration(row),
+    (sum, row) =>
+      sum + getAirtelCommissionKesForRegistration({ ...row, status: "installed" }),
     0
   );
   const safaricomCommissionKsh =

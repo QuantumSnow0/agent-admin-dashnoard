@@ -6,6 +6,7 @@ import { X, ExternalLink } from "lucide-react";
 import type { AdminRegistrationRow } from "@/lib/admin-registrations";
 import { RegistrationPackageBadge } from "@/components/registrations/registration-package-badge";
 import { RegistrationStatusActions } from "@/components/agents/registration-status-actions";
+import { RegistrationCommissionEditor } from "@/components/registrations/registration-commission-editor";
 import { formatRegistrationStatusLabel } from "@/lib/registration-statuses";
 import { Button } from "@/components/ui/button";
 
@@ -141,6 +142,8 @@ export function RegistrationDetailPanel({ registration, open, onClose }: Registr
                   label="Quantity (units)"
                   value={String(registration.units_required ?? 1)}
                 />
+
+                <RegistrationCommissionEditor registration={registration} />
 
                 <h3 className="mb-1 mt-4 text-xs font-bold uppercase tracking-wider text-gray-400">Installation</h3>
                 <Field label="Installation town" value={registration.installation_town} />

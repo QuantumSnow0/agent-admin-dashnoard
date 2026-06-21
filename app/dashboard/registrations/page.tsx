@@ -31,6 +31,8 @@ const CUSTOMER_SELECT = `
   alternate_number,
   preferred_package,
   units_required,
+  commission_package,
+  commission_units,
   installation_town,
   delivery_landmark,
   installation_location,

@@ -39,6 +39,10 @@ export type AdminRegistrationListRow = {
   preferred_package: string;
   /** Airtel only — devices/units (MS Forms totalUnitsRequired). Safaricom: null. */
   units_required?: number | null;
+  /** Admin override for commission (NULL = use preferred_package). */
+  commission_package?: string | null;
+  /** Admin override for commission units (NULL = use units_required). */
+  commission_units?: number | null;
   installation_town: string | null;
   delivery_landmark: string | null;
   visit_date: string | null;
@@ -126,6 +130,9 @@ export function mapCustomerRegistrationToAdminRow(reg: Record<string, unknown>):
     preferred_package: r.preferred_package,
     units_required:
       r.units_required != null ? Number(r.units_required) || 1 : 1,
+    commission_package: (r.commission_package as string | null) ?? null,
+    commission_units:
+      r.commission_units != null ? Number(r.commission_units) : null,
     installation_town: r.installation_town,
     delivery_landmark: r.delivery_landmark,
     visit_date: r.visit_date,

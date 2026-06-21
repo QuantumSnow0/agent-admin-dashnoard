@@ -1,21 +1,32 @@
+import {
+  getEffectiveCommissionPackage,
+  getEffectiveCommissionUnits,
+  type AirtelCommissionBasisRow,
+} from "./airtel-commission-effective";
+
 export const STANDARD_COMMISSION = 500;
 export const PREMIUM_COMMISSION = 700;
 
+export type { AirtelCommissionBasisRow };
+
+/** @deprecated Use getEffectiveCommissionUnits */
 export function normalizeUnitsRequired(value: unknown): number {
-  const n = Number(value);
-  if (!Number.isFinite(n) || n < 1) return 1;
-  return Math.min(99, Math.floor(n));
+  return getEffectiveCommissionUnits({
+    units_required: value as number | null | undefined,
+  });
 }
 
-/** Airtel commission for one registration (package rate × units). */
-export function getAirtelCommissionKesForRegistration(row: {
-  preferred_package?: string | null;
-  units_required?: number | null;
-}): number {
-  const units = normalizeUnitsRequired(row.units_required);
-  const rate =
-    row.preferred_package === "premium" ? PREMIUM_COMMISSION : STANDARD_COMMISSION;
-  return units * rate;
+/** Airtel commission for one registration (effective package rate × effective units). */
+export function getAirtelCommissionKesForRegistration(
+  row: AirtelCommissionBasisRow & { status?: string | null },
+  rates?: { standard: number; premium: number }
+): number {
+  if (row.status != null && row.status !== "installed") return 0;
+  const std = rates?.standard ?? STANDARD_COMMISSION;
+  const prem = rates?.premium ?? PREMIUM_COMMISSION;
+  const units = getEffectiveCommissionUnits(row);
+  const pkg = getEffectiveCommissionPackage(row);
+  return units * (pkg === "premium" ? prem : std);
 }
 
 const AGENT_COMMISSION_SHARE = 0.3;
