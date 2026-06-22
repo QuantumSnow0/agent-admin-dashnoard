@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { clampCommissionOverrideUnits } from "@/lib/airtel-commission-effective";
 
 type Body = {
   commissionPackage?: "standard" | "premium" | null;
@@ -61,9 +62,9 @@ export async function PATCH(
     if (body.commissionUnits !== undefined) {
       if (body.commissionUnits !== null) {
         const u = Math.floor(Number(body.commissionUnits));
-        if (!Number.isFinite(u) || u < 1 || u > 2) {
+        if (!Number.isFinite(u) || u < 1) {
           return NextResponse.json(
-            { error: "Units must be 1 or 2" },
+            { error: "Units must be at least 1" },
             { status: 400 }
           );
         }
@@ -80,6 +81,27 @@ export async function PATCH(
 
   try {
     const service = createServiceClient();
+
+    const { data: existing, error: existingError } = await service
+      .from("customer_registrations")
+      .select("units_required")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (existingError) {
+      return NextResponse.json({ error: existingError.message }, { status: 500 });
+    }
+    if (!existing) {
+      return NextResponse.json({ error: "Registration not found" }, { status: 404 });
+    }
+
+    if (update.commission_units != null) {
+      update.commission_units = clampCommissionOverrideUnits(
+        update.commission_units,
+        existing.units_required
+      );
+    }
+
     const { data, error } = await service
       .from("customer_registrations")
       .update(update)

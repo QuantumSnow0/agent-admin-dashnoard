@@ -18,8 +18,10 @@ import {
   STANDARD_COMMISSION,
 } from "@/lib/commissions";
 import {
+  clampCommissionOverrideUnits,
   getEffectiveCommissionPackage,
   getEffectiveCommissionUnits,
+  getMaxCommissionOverrideUnits,
   hasCommissionOverride,
 } from "@/lib/airtel-commission-effective";
 
@@ -49,6 +51,7 @@ export function RegistrationCommissionEditor({ registration }: Props) {
 
   const registeredPkg = registration.preferred_package ?? "standard";
   const registeredUnits = registration.units_required ?? 1;
+  const maxOverrideUnits = getMaxCommissionOverrideUnits(registeredUnits);
 
   const previewKes = useMemo(() => {
     const row = useOverride
@@ -80,7 +83,7 @@ export function RegistrationCommissionEditor({ registration }: Props) {
             useOverride
               ? {
                   commissionPackage: pkg,
-                  commissionUnits: Number(units) || 1,
+                  commissionUnits: clampCommissionOverrideUnits(units, registeredUnits),
                 }
               : { clearOverride: true }
           ),
@@ -125,7 +128,11 @@ export function RegistrationCommissionEditor({ registration }: Props) {
         Agent registered{" "}
         <strong className="capitalize">{registeredPkg}</strong> ·{" "}
         <strong>{registeredUnits}</strong> unit{registeredUnits === 1 ? "" : "s"}.
-        Override below if the actual install was different.
+        Override below if the actual install was different
+        {registeredUnits > 2
+          ? " (legacy registration — you can set up to what was installed)"
+          : ""}
+        .
       </p>
 
       <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-gray-800">
@@ -157,16 +164,28 @@ export function RegistrationCommissionEditor({ registration }: Props) {
             </Select>
           </div>
           <div>
-            <Label className="text-xs text-gray-600">Units installed</Label>
-            <Select value={units} onValueChange={setUnits}>
-              <SelectTrigger className="mt-1 bg-white">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="1">1 unit</SelectItem>
-                <SelectItem value="2">2 units</SelectItem>
-              </SelectContent>
-            </Select>
+            <Label className="text-xs text-gray-600">Units installed (commission basis)</Label>
+            <input
+              type="number"
+              min={1}
+              max={maxOverrideUnits}
+              step={1}
+              value={units}
+              onChange={(e) => {
+                const next = clampCommissionOverrideUnits(
+                  e.target.value,
+                  registeredUnits
+                );
+                setUnits(String(next));
+              }}
+              className="mt-1 h-9 w-full rounded-md border border-gray-300 bg-white px-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            />
+            <p className="mt-1 text-[11px] text-gray-500">
+              1–{maxOverrideUnits} unit{maxOverrideUnits === 1 ? "" : "s"}
+              {registeredUnits > 2
+                ? ` (registered quantity: ${registeredUnits})`
+                : ""}
+            </p>
           </div>
         </div>
       ) : null}
