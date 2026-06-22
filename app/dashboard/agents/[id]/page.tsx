@@ -8,13 +8,13 @@ import { AgentRatingStars } from "@/components/agents/agent-rating-stars";
 import { AgentCustomersRegistered } from "@/components/agents/agent-customers-registered";
 import { AgentPaymentManager } from "@/components/agents/agent-payment-manager";
 import {
-  getAirtelCommissionKesForRegistration,
-  getSafaricomCommissionKesForRegistration,
-} from "@/lib/commissions";
-import {
   getEffectiveCommissionPackage,
   getEffectiveCommissionUnits,
 } from "@/lib/airtel-commission-effective";
+import {
+  computeAgentWalletSummary,
+  fetchCommissionRates,
+} from "@/lib/agent-wallet";
 import {
   mapCustomerRegistrationToAdminRow,
   mapSafaricomRegistrationToAdminRow,
@@ -73,6 +73,7 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
     { data: paymentRows, error: paymentRowsError },
     { data: safInstalledRows, error: safInstalledRowsError },
     { data: appRating },
+    commissionRates,
   ] = await Promise.all([
     supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("agent_id", id),
     supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }).eq("agent_id", id),
@@ -109,6 +110,7 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
       .select("score, created_at, opened_play_store")
       .eq("agent_id", id)
       .maybeSingle(),
+    fetchCommissionRates(supabase),
   ]);
 
   const totalRegistrations = (custRegCount ?? 0) + (safRegCount ?? 0);
@@ -118,37 +120,18 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
   const installedStandardUnits = (airtelInstalledRows ?? [])
     .filter((r) => getEffectiveCommissionPackage(r) === "standard")
     .reduce((sum, r) => sum + getEffectiveCommissionUnits(r), 0);
-  const airtelCommissionKsh = (airtelInstalledRows ?? []).reduce(
-    (sum, row) =>
-      sum + getAirtelCommissionKesForRegistration({ ...row, status: "installed" }),
-    0
-  );
-  const safaricomCommissionKsh =
-    safInstalledRowsError || !safInstalledRows
-      ? 0
-      : safInstalledRows.reduce(
-          (sum, row) =>
-            sum +
-            getSafaricomCommissionKesForRegistration(
-              row as {
-                service_package: string;
-                fiber_deal_id?: string | null;
-                portable_deal_id?: string | null;
-                dedicated_wifi_deal_id?: string | null;
-              }
-            ),
-          0
-        );
-  const computedTotalEarningsKsh = airtelCommissionKsh + safaricomCommissionKsh;
-  const paidFromLedgerKsh =
-    paymentRowsError || !paymentRows
-      ? 0
-      : paymentRows.reduce(
-          (sum, row) =>
-            sum + Number((row as { amount_ksh?: number | string | null }).amount_ksh ?? 0),
-          0
-        );
-  const computedBalanceKsh = Math.max(0, computedTotalEarningsKsh - paidFromLedgerKsh);
+  const wallet = computeAgentWalletSummary({
+    airtelInstalledRows: airtelInstalledRows ?? [],
+    safaricomInstalledRows:
+      safInstalledRowsError || !safInstalledRows ? [] : safInstalledRows,
+    paymentRows: paymentRowsError || !paymentRows ? [] : paymentRows,
+    rates: commissionRates,
+  });
+  const {
+    totalEarnedKsh: computedTotalEarningsKsh,
+    paidFromLedgerKsh,
+    currentBalanceKsh: computedBalanceKsh,
+  } = wallet;
   const registrations = mergeRegistrationsByDate([
     ...(customerRegs ?? []).map((r) => mapCustomerRegistrationToAdminRow(r as Record<string, unknown>)),
     ...(safaricomRegs ?? []).map((r) => mapSafaricomRegistrationToAdminRow(r as Record<string, unknown>)),
@@ -275,7 +258,8 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
           <AgentPaymentManager
             agentId={agent.id}
             totalEarnings={computedTotalEarningsKsh}
-            availableBalance={computedBalanceKsh}
+            paidFromLedger={paidFromLedgerKsh}
+            currentBalance={computedBalanceKsh}
           />
         </div>
       </header>

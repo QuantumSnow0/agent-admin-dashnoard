@@ -1,4 +1,5 @@
-export const MAX_COMMISSION_UNITS = 2;
+/** Max units admins may set on commission override (DB constraint). */
+export const MAX_COMMISSION_OVERRIDE_UNITS = 2;
 
 export type AirtelCommissionBasisRow = {
   preferred_package?: string | null;
@@ -7,10 +8,11 @@ export type AirtelCommissionBasisRow = {
   commission_units?: number | null;
 };
 
+/** Commission units from stored registration/override values (no cap on units_required). */
 export function normalizeCommissionUnits(value: unknown): number {
   const n = Number(value);
   if (!Number.isFinite(n) || n < 1) return 1;
-  return Math.min(MAX_COMMISSION_UNITS, Math.floor(n));
+  return Math.floor(n);
 }
 
 /** Package used for commission (admin override or agent registration). */

@@ -6,8 +6,9 @@ import { createClient } from "@/lib/supabase/client";
 
 type AgentPaymentManagerProps = {
   agentId: string;
-  availableBalance: number;
   totalEarnings: number;
+  paidFromLedger: number;
+  currentBalance: number;
 };
 
 type PaymentRow = {
@@ -20,8 +21,9 @@ type PaymentRow = {
 
 export function AgentPaymentManager({
   agentId,
-  availableBalance,
   totalEarnings,
+  paidFromLedger,
+  currentBalance,
 }: AgentPaymentManagerProps) {
   const router = useRouter();
   const [amount, setAmount] = useState("");
@@ -33,7 +35,6 @@ export function AgentPaymentManager({
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [ledgerReady, setLedgerReady] = useState(true);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
-  const paidAmount = Math.max(0, totalEarnings - availableBalance);
   const canSubmit = useMemo(() => {
     const parsed = Number(amount);
     return Number.isFinite(parsed) && parsed > 0 && !isSaving;
@@ -92,7 +93,6 @@ export function AgentPaymentManager({
       return;
     }
 
-    const nextBalance = Math.max(0, availableBalance - parsed);
     setIsSaving(true);
     try {
       const supabase = createClient();
@@ -114,16 +114,6 @@ export function AgentPaymentManager({
 
       if (insertError) {
         alert(`Failed to record payment history: ${insertError.message}`);
-        return;
-      }
-
-      const { error: updateError } = await supabase
-        .from("agents")
-        .update({ available_balance: nextBalance })
-        .eq("id", agentId);
-
-      if (updateError) {
-        alert(`Payment saved but balance update failed: ${updateError.message}`);
         return;
       }
 
@@ -163,24 +153,13 @@ export function AgentPaymentManager({
         }
 
         // Fallback path if SQL function is not yet available in schema cache:
-        // manually restore balance then delete the payment row.
-        const amount = Number(payment.amount_ksh || 0);
-        const nextBalance = Math.max(0, availableBalance + amount);
-        const { error: updateError } = await supabase
-          .from("agents")
-          .update({ available_balance: nextBalance })
-          .eq("id", agentId);
-        if (updateError) {
-          alert(`Failed to reverse payment: ${updateError.message}`);
-          return;
-        }
-
+        // delete the payment row (balance is derived from ledger on refresh).
         const { error: deleteError } = await supabase
           .from("agent_payments")
           .delete()
           .eq("id", payment.id);
         if (deleteError) {
-          alert(`Balance restored but failed to remove payment row: ${deleteError.message}`);
+          alert(`Failed to remove payment row: ${deleteError.message}`);
           return;
         }
       }
@@ -209,13 +188,13 @@ export function AgentPaymentManager({
         <div>
           <span className="block text-gray-500">Already paid</span>
           <span className="font-semibold text-gray-900">
-            KSh {paidAmount.toLocaleString()}
+            KSh {paidFromLedger.toLocaleString()}
           </span>
         </div>
         <div>
           <span className="block text-gray-500">Current balance</span>
           <span className="font-semibold text-gray-900">
-            KSh {availableBalance.toLocaleString()}
+            KSh {currentBalance.toLocaleString()}
           </span>
         </div>
       </div>

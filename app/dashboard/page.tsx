@@ -18,6 +18,7 @@ import {
   buildGeographyBreakdown,
   computeCommissionLiability,
 } from "@/lib/dashboard-chart-data";
+import { fetchCommissionRates } from "@/lib/agent-wallet";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -62,6 +63,7 @@ export default async function DashboardPage() {
     { data: paymentRows },
     { data: allAgents },
     { data: appRatings },
+    commissionRates,
   ] = await Promise.all([
     supabase.from("agents").select("*", { count: "exact", head: true }),
     supabase.from("customer_registrations").select("*", { count: "exact", head: true }),
@@ -73,7 +75,7 @@ export default async function DashboardPage() {
     supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }).eq("status", "installed"),
     supabase
       .from("customer_registrations")
-      .select("agent_id, created_at, status, preferred_package, units_required")
+      .select("agent_id, created_at, status, preferred_package, units_required, commission_package, commission_units")
       .gte("created_at", thirtyDaysAgo),
     supabase
       .from("safaricom_registrations")
@@ -93,7 +95,7 @@ export default async function DashboardPage() {
       ),
     supabase
       .from("customer_registrations")
-      .select("preferred_package, units_required")
+      .select("preferred_package, units_required, commission_package, commission_units")
       .eq("status", "installed"),
     supabase
       .from("safaricom_registrations")
@@ -104,6 +106,7 @@ export default async function DashboardPage() {
     supabase.from("agent_payments").select("amount_ksh"),
     supabase.from("agents").select("id, name, email"),
     supabase.from("app_ratings").select("score, opened_play_store, created_at"),
+    fetchCommissionRates(supabase),
   ]);
 
   const totalRegistrations = (custRegCount ?? 0) + (safRegCount ?? 0);
@@ -115,8 +118,8 @@ export default async function DashboardPage() {
   const agentsList = allAgents ?? [];
 
   const chartDataByRange = {
-    7: buildChartRangeData(custChartRows, safChartRows, agentsList, 7),
-    30: buildChartRangeData(custChartRows, safChartRows, agentsList, 30),
+    7: buildChartRangeData(custChartRows, safChartRows, agentsList, 7, commissionRates),
+    30: buildChartRangeData(custChartRows, safChartRows, agentsList, 30, commissionRates),
   };
 
   const overallFunnel = buildConversionFunnel(custRegsAll ?? [], safRegsAll ?? []);
@@ -126,7 +129,8 @@ export default async function DashboardPage() {
   const commissionLiability = computeCommissionLiability(
     custInstalledAll ?? [],
     safInstalledAll ?? [],
-    paymentRows ?? []
+    paymentRows ?? [],
+    commissionRates
   );
 
   const geographyBreakdown = buildGeographyBreakdown(

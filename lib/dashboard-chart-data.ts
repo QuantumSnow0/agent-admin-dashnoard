@@ -4,6 +4,7 @@ import {
   getSafaricomCommissionKesForRegistration,
   normalizeUnitsRequired,
 } from "@/lib/commissions";
+import type { CommissionRates } from "@/lib/agent-wallet";
 import { isClosedRegistrationStatus } from "@/lib/registration-statuses";
 
 export type RegistrationsByDay = { date: string; count: number }[];
@@ -31,6 +32,8 @@ type CustRegRow = DatedRow & {
   status: string;
   preferred_package?: string | null;
   units_required?: number | null;
+  commission_package?: string | null;
+  commission_units?: number | null;
 };
 
 type SafRegRow = DatedRow & {
@@ -94,7 +97,8 @@ export function buildChartRangeData(
   custRegs: CustRegRow[],
   safRegs: SafRegRow[],
   agents: { id: string; name: string | null; email: string | null }[],
-  days: 7 | 30
+  days: 7 | 30,
+  rates?: CommissionRates
 ): ChartRangeData {
   const custInRange = custRegs.filter((r) => inLastDays(r.created_at, days));
   const safInRange = safRegs.filter((r) => inLastDays(r.created_at, days));
@@ -129,7 +133,7 @@ export function buildChartRangeData(
     );
 
     const airtelRevenue = dayCustInstalled.reduce(
-      (sum, r) => sum + getAirtelCommissionKesForRegistration(r),
+      (sum, r) => sum + getAirtelCommissionKesForRegistration(r, rates),
       0
     );
     const safRevenue = daySafInstalled.reduce(
@@ -165,17 +169,23 @@ export function buildChartRangeData(
 }
 
 export function computeCommissionLiability(
-  custInstalled: { preferred_package?: string | null; units_required?: number | null }[],
+  custInstalled: {
+    preferred_package?: string | null;
+    units_required?: number | null;
+    commission_package?: string | null;
+    commission_units?: number | null;
+  }[],
   safInstalled: {
     service_package?: string;
     fiber_deal_id?: string | null;
     portable_deal_id?: string | null;
     dedicated_wifi_deal_id?: string | null;
   }[],
-  paymentRows: { amount_ksh?: number | string | null }[]
+  paymentRows: { amount_ksh?: number | string | null }[],
+  rates?: CommissionRates
 ) {
   const airtelEarned = custInstalled.reduce(
-    (sum, row) => sum + getAirtelCommissionKesForRegistration(row),
+    (sum, row) => sum + getAirtelCommissionKesForRegistration(row, rates),
     0
   );
   const safaricomEarned = safInstalled.reduce(
@@ -183,9 +193,11 @@ export function computeCommissionLiability(
     0
   );
   const totalEarned = airtelEarned + safaricomEarned;
-  const totalPaid = paymentRows.reduce(
-    (sum, row) => sum + Number(row.amount_ksh ?? 0),
-    0
+  const totalPaid = Math.max(
+    0,
+    Math.round(
+      paymentRows.reduce((sum, row) => sum + Number(row.amount_ksh ?? 0), 0)
+    )
   );
   const outstanding = Math.max(0, totalEarned - totalPaid);
 
