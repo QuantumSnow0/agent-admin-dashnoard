@@ -13,7 +13,9 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SuperAdminDetailPanel } from "@/components/super-admin/super-admin-detail-panel";
+import { MSFormsModeToggle } from "@/components/super-admin/ms-forms-mode-toggle";
 import type { SuperAdminRegistrationDetail } from "@/lib/super-admin-types";
+import type { MSFormsSubmissionMode } from "@/lib/ms-forms-config";
 import type { SuperAdminQueueRow } from "@/app/super-admin/page";
 
 function fmtDate(iso: string | null): string {
@@ -34,9 +36,14 @@ function fmtDate(iso: string | null): string {
 type Props = {
   initialPending: SuperAdminQueueRow[];
   initialSubmitted: SuperAdminQueueRow[];
+  initialSubmissionMode: MSFormsSubmissionMode;
 };
 
-export function SuperAdminQueue({ initialPending, initialSubmitted }: Props) {
+export function SuperAdminQueue({
+  initialPending,
+  initialSubmitted,
+  initialSubmissionMode,
+}: Props) {
   const router = useRouter();
   const [pending, setPending] = useState(initialPending);
   const [submitted, setSubmitted] = useState(initialSubmitted);
@@ -160,6 +167,11 @@ export function SuperAdminQueue({ initialPending, initialSubmitted }: Props) {
 
   return (
     <div className="space-y-4">
+      <MSFormsModeToggle
+        initialMode={initialSubmissionMode}
+        pendingCount={pending.length}
+      />
+
       {message ? (
         <div
           className={`rounded-lg border p-3 text-sm ${
