@@ -1,4 +1,5 @@
 import { createServiceClient } from "@/lib/supabase/service";
+import { fetchMSFormsSubmissionMode } from "@/lib/ms-forms-config";
 
 /** Enterprise agent details sent to Microsoft Forms (matches agent app). */
 const MS_FORMS_AGENT = {
@@ -111,4 +112,84 @@ export async function submitRegistrationToMSForms(
   }
 
   return { success: true, responseId: responseIdString };
+}
+
+export type ProcessPendingResult = {
+  processed: number;
+  succeeded: number;
+  failed: number;
+  skipped: boolean;
+  reason?: string;
+  errors: string[];
+};
+
+/** Submit one registration when global mode is auto (server-side, no agent app). */
+export async function maybeAutoSubmitRegistrationServer(
+  registrationId: string
+): Promise<MSFormsSubmitResult & { skipped?: boolean; reason?: string }> {
+  const service = createServiceClient();
+  const mode = await fetchMSFormsSubmissionMode(service);
+  if (mode !== "auto") {
+    return { success: true, skipped: true, reason: "manual_mode" };
+  }
+  return submitRegistrationToMSForms(registrationId);
+}
+
+/** Process pending Airtel rows when mode is auto (retries + backlog). */
+export async function processPendingAutoMSForms(
+  limit = 50
+): Promise<ProcessPendingResult> {
+  const service = createServiceClient();
+  const mode = await fetchMSFormsSubmissionMode(service);
+  if (mode !== "auto") {
+    return {
+      processed: 0,
+      succeeded: 0,
+      failed: 0,
+      skipped: true,
+      reason: "manual_mode",
+      errors: [],
+    };
+  }
+
+  const { data: rows, error } = await service
+    .from("customer_registrations")
+    .select("id, customer_name")
+    .is("ms_forms_response_id", null)
+    .order("created_at", { ascending: true })
+    .limit(limit);
+
+  if (error) {
+    return {
+      processed: 0,
+      succeeded: 0,
+      failed: 0,
+      skipped: false,
+      errors: [error.message],
+    };
+  }
+
+  let succeeded = 0;
+  let failed = 0;
+  const errors: string[] = [];
+
+  for (const row of rows ?? []) {
+    const result = await submitRegistrationToMSForms(row.id);
+    if (result.success) {
+      succeeded++;
+    } else {
+      failed++;
+      errors.push(
+        `${row.customer_name ?? row.id}: ${result.error ?? "Failed"}`
+      );
+    }
+  }
+
+  return {
+    processed: (rows ?? []).length,
+    succeeded,
+    failed,
+    skipped: false,
+    errors,
+  };
 }

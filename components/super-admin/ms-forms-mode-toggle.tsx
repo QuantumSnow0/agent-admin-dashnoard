@@ -64,7 +64,7 @@ export function MSFormsModeToggle({ initialMode, pendingCount }: Props) {
           </p>
           <p className="mt-1 text-sm text-slate-300">
             {mode === "auto"
-              ? "New leads go to Microsoft Forms automatically."
+              ? "New leads are submitted by the server automatically (agent app update not required)."
               : "You submit leads manually from the queue below."}
           </p>
         </div>

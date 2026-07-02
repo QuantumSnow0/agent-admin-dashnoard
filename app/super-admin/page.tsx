@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { SuperAdminQueue } from "@/components/super-admin/super-admin-queue";
 import { fetchMSFormsSubmissionMode } from "@/lib/ms-forms-config";
+import { processPendingAutoMSForms } from "@/lib/super-admin-ms-forms";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -66,7 +67,13 @@ export default async function SuperAdminPage() {
       agents(name)
     `;
 
-    const [pendingRes, submittedRes, mode] = await Promise.all([
+    submissionMode = await fetchMSFormsSubmissionMode(service);
+
+    if (submissionMode === "auto") {
+      await processPendingAutoMSForms(50);
+    }
+
+    const [pendingRes, submittedRes] = await Promise.all([
       service
         .from("customer_registrations")
         .select(select)
@@ -79,9 +86,7 @@ export default async function SuperAdminPage() {
         .not("ms_forms_response_id", "is", null)
         .order("ms_forms_submitted_at", { ascending: false })
         .limit(50),
-      fetchMSFormsSubmissionMode(service),
     ]);
-    submissionMode = mode;
 
     if (pendingRes.error || submittedRes.error) {
       loadError =
@@ -120,7 +125,7 @@ export default async function SuperAdminPage() {
         <h1 className="text-2xl font-bold text-white">MS Forms queue</h1>
         <p className="mt-1 text-sm text-slate-400">
           {submissionMode === "auto"
-            ? "Automatic mode is on — new leads submit to MS Forms when agents save them. Use the queue for failures or older pending leads."
+            ? "Automatic mode — the server submits new leads to MS Forms (no agent app update needed). Pending items are retried every few minutes and when you open this page."
             : "Manual mode — submit Airtel registrations to Microsoft Forms from the queue below."}
         </p>
         {agent.email ? (
