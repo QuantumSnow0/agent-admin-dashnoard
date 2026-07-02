@@ -9,6 +9,8 @@ import {
   mapCustomerRegistrationToAdminRow,
   mapSafaricomRegistrationToAdminRow,
   mergeRegistrationsByDate,
+  CUSTOMER_REGISTRATION_ADMIN_SELECT,
+  SAFARICOM_REGISTRATION_ADMIN_SELECT,
 } from "@/lib/admin-registrations";
 
 export const dynamic = "force-dynamic";
@@ -22,55 +24,9 @@ interface RegistrationsPageProps {
   searchParams: Promise<{ status?: string; q?: string; agentId?: string }>;
 }
 
-const CUSTOMER_SELECT = `
-  id,
-  agent_id,
-  customer_name,
-  email,
-  airtel_number,
-  alternate_number,
-  preferred_package,
-  units_required,
-  commission_package,
-  commission_units,
-  installation_town,
-  delivery_landmark,
-  installation_location,
-  visit_date,
-  visit_time,
-  status,
-  created_at,
-  updated_at,
-  ms_forms_response_id,
-  ms_forms_submitted_at,
-  agents(name)
-`;
+const CUSTOMER_SELECT = CUSTOMER_REGISTRATION_ADMIN_SELECT;
 
-const SAFARICOM_SELECT = `
-  id,
-  agent_id,
-  customer_name,
-  email,
-  safaricom_number,
-  alternate_number,
-  identification_number,
-  date_of_birth,
-  service_package,
-  fiber_deal_id,
-  portable_deal_id,
-  dedicated_wifi_deal_id,
-  fiber_region_name,
-  fiber_cluster_name,
-  fiber_estate_id,
-  fiber_estate_name,
-  install_county,
-  install_town,
-  install_landmark,
-  status,
-  created_at,
-  updated_at,
-  agents(name)
-`;
+const SAFARICOM_SELECT = SAFARICOM_REGISTRATION_ADMIN_SELECT;
 
 export default async function RegistrationsPage({ searchParams }: RegistrationsPageProps) {
   const supabase = await createClient();

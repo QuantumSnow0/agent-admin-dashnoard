@@ -19,6 +19,8 @@ import {
   mapCustomerRegistrationToAdminRow,
   mapSafaricomRegistrationToAdminRow,
   mergeRegistrationsByDate,
+  CUSTOMER_REGISTRATION_ADMIN_SELECT,
+  SAFARICOM_REGISTRATION_ADMIN_SELECT,
 } from "@/lib/admin-registrations";
 
 interface AgentProfilePageProps {
@@ -84,16 +86,12 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
       .eq("status", "installed"),
     supabase
       .from("customer_registrations")
-      .select(
-        "id, agent_id, customer_name, email, airtel_number, alternate_number, preferred_package, units_required, commission_package, commission_units, installation_town, delivery_landmark, visit_date, visit_time, status, created_at"
-      )
+      .select(CUSTOMER_REGISTRATION_ADMIN_SELECT)
       .eq("agent_id", id)
       .order("created_at", { ascending: false }),
     supabase
       .from("safaricom_registrations")
-      .select(
-        "id, agent_id, customer_name, email, safaricom_number, alternate_number, service_package, fiber_region_name, fiber_cluster_name, install_county, install_town, install_landmark, status, created_at"
-      )
+      .select(SAFARICOM_REGISTRATION_ADMIN_SELECT)
       .eq("agent_id", id)
       .order("created_at", { ascending: false }),
     supabase

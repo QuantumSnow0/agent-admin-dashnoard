@@ -5,7 +5,10 @@ import Link from "next/link";
 import { FileText, ExternalLink, Clock, Package, XCircle, Copy, Ban } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { RegistrationStatusActions } from "@/components/agents/registration-status-actions";
-import type { AdminRegistrationRow } from "@/lib/admin-registrations";
+import {
+  formatAirtelAdminLocation,
+  type AdminRegistrationRow,
+} from "@/lib/admin-registrations";
 import { RegistrationPackageBadge } from "@/components/registrations/registration-package-badge";
 import { RegistrationDetailPanel } from "@/components/registrations/registration-detail-panel";
 import {
@@ -185,6 +188,10 @@ export function AgentCustomersRegistered({ registrations }: AgentCustomersRegist
                               reg.source === "safaricom"
                                 ? [reg.safaricom_number, reg.alternate_number, reg.email].filter(Boolean).join(" · ") || "—"
                                 : [reg.airtel_number, reg.alternate_number, reg.email].filter(Boolean).join(" · ") || "—";
+                            const location =
+                              reg.source === "airtel"
+                                ? formatAirtelAdminLocation(reg) ?? "—"
+                                : reg.installation_town || reg.delivery_landmark || "—";
                             const visit =
                               reg.source === "airtel"
                                 ? [reg.visit_date, reg.visit_time].filter(Boolean).join(" ") || "—"
@@ -228,8 +235,8 @@ export function AgentCustomersRegistered({ registrations }: AgentCustomersRegist
                                 <td className="px-2 py-2 text-gray-600 tabular-nums text-center">
                                   {reg.source === "airtel" ? reg.units_required ?? 1 : "—"}
                                 </td>
-                                <td className="px-2 py-2 text-gray-600 truncate" title={reg.installation_town || reg.delivery_landmark || undefined}>
-                                  {reg.installation_town || reg.delivery_landmark || "—"}
+                                <td className="px-2 py-2 text-gray-600 truncate" title={location !== "—" ? location : undefined}>
+                                  {location}
                                 </td>
                                 <td className="px-2 py-2">
                                   <span className={`inline-flex rounded border px-1.5 py-0.5 text-[11px] font-medium ${regStatusStyle}`}>

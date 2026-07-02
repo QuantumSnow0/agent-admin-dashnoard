@@ -55,6 +55,58 @@ export type AdminRegistrationListRow = {
 /** Full row for registrations table + detail panel. */
 export type AdminRegistrationRow = AdminRegistrationListRow & AdminRegistrationDetailFields;
 
+/** Supabase select for Airtel rows (list + detail panel). */
+export const CUSTOMER_REGISTRATION_ADMIN_SELECT = `
+  id,
+  agent_id,
+  customer_name,
+  email,
+  airtel_number,
+  alternate_number,
+  preferred_package,
+  units_required,
+  commission_package,
+  commission_units,
+  installation_town,
+  delivery_landmark,
+  installation_location,
+  visit_date,
+  visit_time,
+  status,
+  created_at,
+  updated_at,
+  ms_forms_response_id,
+  ms_forms_submitted_at,
+  agents(name)
+`;
+
+/** Supabase select for Safaricom rows (list + detail panel). */
+export const SAFARICOM_REGISTRATION_ADMIN_SELECT = `
+  id,
+  agent_id,
+  customer_name,
+  email,
+  safaricom_number,
+  alternate_number,
+  identification_number,
+  date_of_birth,
+  service_package,
+  fiber_deal_id,
+  portable_deal_id,
+  dedicated_wifi_deal_id,
+  fiber_region_name,
+  fiber_cluster_name,
+  fiber_estate_id,
+  fiber_estate_name,
+  install_county,
+  install_town,
+  install_landmark,
+  status,
+  created_at,
+  updated_at,
+  agents(name)
+`;
+
 const SAF_SERVICE_LABEL: Record<string, string> = {
   home_business_fiber: "Home & business fibre",
   safaricom_portable_5g: "Portable 5G",
@@ -72,6 +124,17 @@ export function readRowString(obj: Record<string, unknown>, ...keys: string[]): 
     if (v != null && String(v).trim() !== "") return String(v).trim();
   }
   return null;
+}
+
+export function formatAirtelAdminLocation(row: {
+  installation_town?: string | null;
+  installation_location?: string | null;
+  delivery_landmark?: string | null;
+}): string | null {
+  const parts = [row.installation_town, row.installation_location, row.delivery_landmark].filter(
+    (p): p is string => typeof p === "string" && p.trim().length > 0
+  );
+  return parts.length ? parts.join(" · ") : null;
 }
 
 export function formatSafaricomAdminLocation(row: {
