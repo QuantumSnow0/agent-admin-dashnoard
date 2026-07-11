@@ -6,7 +6,6 @@ import {
   updateMSFormsSubmissionMode,
   type MSFormsSubmissionMode,
 } from "@/lib/ms-forms-config";
-import { processPendingAutoMSForms } from "@/lib/super-admin-ms-forms";
 
 export async function GET() {
   try {
@@ -60,11 +59,5 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: result.error }, { status: 500 });
   }
 
-  let pendingProcessed: Awaited<ReturnType<typeof processPendingAutoMSForms>> | null =
-    null;
-  if (mode === "auto") {
-    pendingProcessed = await processPendingAutoMSForms(50);
-  }
-
-  return NextResponse.json({ submissionMode: mode, pendingProcessed });
+  return NextResponse.json({ submissionMode: mode });
 }

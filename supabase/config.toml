@@ -10,3 +10,29 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/ms-forms-auto-worker/deno.json"
 entrypoint = "./functions/ms-forms-auto-worker/index.ts"
+
+# --- Lead dispatch v1 (see lib/dispatch/README.md) ---
+
+[functions.create-inbound-lead]
+enabled = true
+verify_jwt = false
+import_map = "./functions/create-inbound-lead/deno.json"
+entrypoint = "./functions/create-inbound-lead/index.ts"
+
+[functions.dispatch-lead]
+enabled = true
+verify_jwt = false
+import_map = "./functions/dispatch-lead/deno.json"
+entrypoint = "./functions/dispatch-lead/index.ts"
+
+[functions.lead-offer-action]
+enabled = true
+verify_jwt = true
+import_map = "./functions/lead-offer-action/deno.json"
+entrypoint = "./functions/lead-offer-action/index.ts"
+
+[functions.lead-outcome]
+enabled = true
+verify_jwt = true
+import_map = "./functions/lead-outcome/deno.json"
+entrypoint = "./functions/lead-outcome/index.ts"

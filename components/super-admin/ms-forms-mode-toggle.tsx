@@ -44,7 +44,7 @@ export function MSFormsModeToggle({ initialMode, pendingCount }: Props) {
       setMode(next);
       setMessage(
         next === "auto"
-          ? "Automatic mode on — new Airtel leads will submit to MS Forms when saved."
+          ? "Automatic mode on — agents need app v1.0.8+ to submit to MS Forms on register. Use the queue for older leads or failures."
           : "Manual mode on — submit leads from this queue."
       );
       router.refresh();
@@ -64,7 +64,7 @@ export function MSFormsModeToggle({ initialMode, pendingCount }: Props) {
           </p>
           <p className="mt-1 text-sm text-slate-300">
             {mode === "auto"
-              ? "New leads are submitted by the server automatically (agent app update not required)."
+              ? "Agents with the updated app submit to MS Forms when they register. Pending = old app or failed submit."
               : "You submit leads manually from the queue below."}
           </p>
         </div>

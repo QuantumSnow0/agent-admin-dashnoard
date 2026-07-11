@@ -1,9 +1,3 @@
 {
-  "framework": "nextjs",
-  "crons": [
-    {
-      "path": "/api/cron/ms-forms-auto",
-      "schedule": "*/3 * * * *"
-    }
-  ]
+  "framework": "nextjs"
 }
