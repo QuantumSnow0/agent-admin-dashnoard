@@ -8,6 +8,8 @@ export const DISPATCH_DEFAULTS = {
   offerTimeoutMinutes: 15,
   slaHours: 24,
   maxOpenLeadsPerAgent: 3,
+  /** Agent is "online" when last_seen_at is within this window (app heartbeat). */
+  onlinePresenceMinutes: 5,
 } as const;
 
 export const LEAD_SOURCES = [
@@ -24,7 +26,11 @@ export const LEAD_STATUSES = [
   "assigned",
   "kyc_in_progress",
   "kyc_completed",
+  "pending_install",
   "installed",
+  "rejected",
+  "duplicate",
+  "cancelled",
   "needs_reassignment",
   "admin_queue",
   "lost",
@@ -60,3 +66,6 @@ export const NOTIFICATION_TYPES = {
 
 /** Android package for Airtel Connect KYC (v1: launch or Play Store fallback). */
 export const AIRTEL_CONNECT_PACKAGE = "com.airtel.airtelwork.africa";
+
+/** Flat commission when an inbound lead is marked installed (agent SR/IMEI proof). */
+export const LEAD_INSTALL_COMMISSION_KES = 200;

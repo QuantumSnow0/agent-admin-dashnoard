@@ -66,16 +66,17 @@ export default async function DashboardPage() {
     commissionRates,
   ] = await Promise.all([
     supabase.from("agents").select("*", { count: "exact", head: true }),
-    supabase.from("customer_registrations").select("*", { count: "exact", head: true }),
+    supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("commission_exempt", false),
     supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }),
     supabase.from("agents").select("*", { count: "exact", head: true }).eq("status", "pending"),
-    supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("status", "pending"),
+    supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("commission_exempt", false).eq("status", "pending"),
     supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }).eq("status", "pending"),
-    supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("status", "installed"),
+    supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("commission_exempt", false).eq("status", "installed"),
     supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }).eq("status", "installed"),
     supabase
       .from("customer_registrations")
       .select("agent_id, created_at, status, preferred_package, units_required, commission_package, commission_units")
+      .eq("commission_exempt", false)
       .gte("created_at", thirtyDaysAgo),
     supabase
       .from("safaricom_registrations")
@@ -83,11 +84,12 @@ export default async function DashboardPage() {
         "agent_id, created_at, status, service_package, fiber_deal_id, portable_deal_id, dedicated_wifi_deal_id"
       )
       .gte("created_at", thirtyDaysAgo),
-    supabase.from("customer_registrations").select("status"),
+    supabase.from("customer_registrations").select("status").eq("commission_exempt", false),
     supabase.from("safaricom_registrations").select("status"),
     supabase
       .from("customer_registrations")
-      .select("status, installation_town"),
+      .select("status, installation_town")
+      .eq("commission_exempt", false),
     supabase
       .from("safaricom_registrations")
       .select(
@@ -96,7 +98,8 @@ export default async function DashboardPage() {
     supabase
       .from("customer_registrations")
       .select("preferred_package, units_required, commission_package, commission_units")
-      .eq("status", "installed"),
+      .eq("status", "installed")
+      .eq("commission_exempt", false),
     supabase
       .from("safaricom_registrations")
       .select(

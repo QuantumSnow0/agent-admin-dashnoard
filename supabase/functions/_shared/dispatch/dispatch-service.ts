@@ -6,18 +6,24 @@
 
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { DISPATCH_DEFAULTS, NOTIFICATION_TYPE_LEAD_OFFER } from "./constants.ts";
+import { formatLeadOfferNotificationCopy } from "./lead-offer-notification-copy.ts";
+import { expireStaleOffers, runDispatchSweep } from "./expire-offers.ts";
+import { deliverPushNotification } from "./push-delivery.ts";
 import {
   buildOfferPreview,
   rankAgentsInCounty,
+  rankFallbackAgents,
   resolveLeadPoint,
   type AgentCandidate,
   type LocationRef,
+  type RankedAgent,
 } from "./matching.ts";
 
 type DispatchConfig = {
   dispatch_enabled: boolean;
   offer_timeout_minutes: number;
   max_open_leads_per_agent: number;
+  online_presence_minutes: number;
 };
 
 export async function loadDispatchConfig(
@@ -25,7 +31,9 @@ export async function loadDispatchConfig(
 ): Promise<DispatchConfig> {
   const { data } = await service
     .from("dispatch_config")
-    .select("dispatch_enabled, offer_timeout_minutes, max_open_leads_per_agent")
+    .select(
+      "dispatch_enabled, offer_timeout_minutes, max_open_leads_per_agent, online_presence_minutes",
+    )
     .limit(1)
     .maybeSingle();
 
@@ -35,6 +43,8 @@ export async function loadDispatchConfig(
       data?.offer_timeout_minutes ?? DISPATCH_DEFAULTS.offerTimeoutMinutes,
     max_open_leads_per_agent:
       data?.max_open_leads_per_agent ?? DISPATCH_DEFAULTS.maxOpenLeadsPerAgent,
+    online_presence_minutes:
+      data?.online_presence_minutes ?? DISPATCH_DEFAULTS.onlinePresenceMinutes,
   };
 }
 
@@ -67,7 +77,7 @@ async function loadEligibleAgents(
 ): Promise<AgentCandidate[]> {
   const { data: agents, error } = await service
     .from("agents")
-    .select("id, town, lead_dispatch_scope, status")
+    .select("id, town, lead_dispatch_scope, status, is_fallback_agent, fallback_priority")
     .eq("status", "approved");
 
   if (error) throw error;
@@ -77,7 +87,7 @@ async function loadEligibleAgents(
 
   const { data: settings } = await service
     .from("agent_dispatch_settings")
-    .select("agent_id, is_available, county")
+    .select("agent_id, is_available, county, last_seen_at")
     .in("agent_id", ids);
 
   const settingsMap = new Map(
@@ -92,6 +102,9 @@ async function loadEligibleAgents(
       lead_dispatch_scope: a.lead_dispatch_scope ?? "both",
       is_available: s?.is_available ?? false,
       county: s?.county ?? null,
+      last_seen_at: (s?.last_seen_at as string | null) ?? null,
+      is_fallback_agent: Boolean(a.is_fallback_agent),
+      fallback_priority: Number(a.fallback_priority ?? 100),
     };
   });
 }
@@ -116,35 +129,27 @@ async function notifyLeadOffer(
   offerId: string,
   preview: Record<string, unknown>,
 ): Promise<void> {
-  const product = String(preview.product ?? "lead");
-  const brand =
-    product === "safaricom"
-      ? "Safaricom"
-      : product === "airtel"
-        ? "Airtel"
-        : product.charAt(0).toUpperCase() + product.slice(1);
-  const town = String(preview.installationTown ?? "your area");
-  const distance =
-    preview.distanceKm != null ? `~${preview.distanceKm} km` : null;
-  const pkg = preview.packageLabel ? String(preview.packageLabel) : null;
-  const subtitle = [distance, pkg].filter(Boolean).join(" · ");
-  const area = preview.roughArea ? String(preview.roughArea) : null;
-  const location = [town, area].filter(Boolean).join(" · ");
+  const { title, message } = formatLeadOfferNotificationCopy(preview);
 
-  const title = `${brand} lead · ${town}`;
-  const message =
-    subtitle.length > 0
-      ? `${location} — ${subtitle}. Accept or decline before the timer ends.`
-      : `New ${brand} customer in ${location}. Tap to respond before the offer expires.`;
+  const { data: notification, error: notifyError } = await service
+    .from("notifications")
+    .insert({
+      agent_id: agentId,
+      type: NOTIFICATION_TYPE_LEAD_OFFER,
+      title,
+      message,
+      related_id: leadId,
+      metadata: { offerId, preview },
+    })
+    .select("id, agent_id, type, title, message, related_id, metadata")
+    .single();
 
-  await service.from("notifications").insert({
-    agent_id: agentId,
-    type: NOTIFICATION_TYPE_LEAD_OFFER,
-    title,
-    message,
-    related_id: leadId,
-    metadata: { offerId, preview },
-  });
+  if (notifyError || !notification) {
+    console.error("notifyLeadOffer insert failed:", notifyError);
+    return;
+  }
+
+  await deliverPushNotification(notification);
 }
 
 export type DispatchLeadResult =
@@ -159,7 +164,12 @@ export type DispatchLeadResult =
 export async function dispatchLead(
   service: SupabaseClient,
   leadId: string,
+  options?: { skipSweep?: boolean; excludeAgentIds?: string[] },
 ): Promise<DispatchLeadResult> {
+  if (!options?.skipSweep) {
+    await expireStaleOffers(service, dispatchLead);
+  }
+
   const config = await loadDispatchConfig(service);
   if (!config.dispatch_enabled) {
     return { outcome: "skipped", reason: "dispatch_disabled" };
@@ -181,52 +191,75 @@ export async function dispatchLead(
 
   const locationRefs = await loadLocationRefs(service);
   const resolved = resolveLeadPoint(lead.installation_town, locationRefs);
-  const county = lead.county ?? resolved?.county ?? null;
-
-  if (!county || !resolved) {
-    await service
-      .from("inbound_leads")
-      .update({ status: "admin_queue", county })
-      .eq("id", leadId);
-    return { outcome: "admin_queue", reason: "unknown_county_or_town" };
-  }
-
-  // Ensure county is stored on lead for admin filters
-  if (!lead.county) {
-    await service.from("inbound_leads").update({ county }).eq("id", leadId);
-  }
+  // Prefer canonical county from location_reference over client-supplied county
+  // (Safaricom forms send town labels like "NAIROBI", not county names).
+  const county = resolved?.county ?? lead.county ?? null;
 
   const agents = await loadEligibleAgents(service);
   const openCounts = await loadOpenLeadCounts(service);
   const excluded = await loadExcludedAgentIds(service, leadId);
+  for (const id of options?.excludeAgentIds ?? []) {
+    excluded.add(id);
+  }
 
-  const ranked = rankAgentsInCounty(
-    county,
-    resolved.point,
-    agents,
-    locationRefs,
-    lead.product,
-    openCounts,
-    config.max_open_leads_per_agent,
-  ).filter((a) => !excluded.has(a.agent_id));
+  let next: RankedAgent | null = null;
+  const previewCounty = county;
 
-  if (ranked.length === 0) {
+  if (county && resolved) {
+    if (lead.county !== county) {
+      await service.from("inbound_leads").update({ county }).eq("id", leadId);
+    }
+
+    const ranked = rankAgentsInCounty(
+      county,
+      resolved.point,
+      agents,
+      locationRefs,
+      lead.product,
+      openCounts,
+      config.max_open_leads_per_agent,
+      config.online_presence_minutes,
+    ).filter((a) => !excluded.has(a.agent_id));
+
+    next = ranked[0] ?? null;
+  }
+
+  // No county match (or unknown town) → try designated fallback agents one-at-a-time.
+  if (!next) {
+    const fallbacks = rankFallbackAgents(
+      resolved?.point ?? null,
+      agents,
+      locationRefs,
+      lead.product,
+      openCounts,
+      config.max_open_leads_per_agent,
+      config.online_presence_minutes,
+    ).filter((a) => !excluded.has(a.agent_id));
+
+    next = fallbacks[0] ?? null;
+  }
+
+  if (!next) {
     await service
       .from("inbound_leads")
-      .update({ status: "admin_queue" })
+      .update({ status: "admin_queue", county: previewCounty })
       .eq("id", leadId);
 
-    // Expire any stale offered rows
     await service
       .from("lead_offers")
       .update({ status: "expired", responded_at: new Date().toISOString() })
       .eq("lead_id", leadId)
       .eq("status", "offered");
 
-    return { outcome: "admin_queue", reason: "no_agents_in_county" };
+    return {
+      outcome: "admin_queue",
+      reason:
+        !county || !resolved
+          ? "unknown_county_or_town"
+          : "no_agents_or_fallback",
+    };
   }
 
-  const next = ranked[0];
   const expiresAt = new Date(
     Date.now() + config.offer_timeout_minutes * 60 * 1000,
   ).toISOString();
@@ -236,13 +269,15 @@ export async function dispatchLead(
 
   const preview = buildOfferPreview(
     lead.product,
-    county,
+    previewCounty,
     lead.installation_town,
     lead.installation_area,
     lead.delivery_landmark,
     packageLabel,
     lead.created_at,
-    next.distance_km,
+    Number.isFinite(next.distance_km) && next.distance_km < 99999
+      ? next.distance_km
+      : null,
   );
 
   const { data: priorOffers } = await service
@@ -268,9 +303,13 @@ export async function dispatchLead(
       agent_id: next.agent_id,
       status: "offered",
       offer_sequence: offerSequence,
-      distance_km: next.distance_km,
+      distance_km:
+        Number.isFinite(next.distance_km) && next.distance_km < 99999
+          ? next.distance_km
+          : null,
       preview_payload: preview,
       expires_at: expiresAt,
+      metadata: next.is_fallback_agent ? { offered_as: "fallback" } : {},
     })
     .select("id")
     .single();
@@ -287,4 +326,11 @@ export async function dispatchLead(
   await notifyLeadOffer(service, next.agent_id, leadId, offer.id, preview);
 
   return { outcome: "offered", offerId: offer.id, agentId: next.agent_id };
+}
+
+export async function sweepDispatchQueue(
+  service: SupabaseClient,
+  options?: { county?: string | null },
+) {
+  return runDispatchSweep(service, dispatchLead, options);
 }

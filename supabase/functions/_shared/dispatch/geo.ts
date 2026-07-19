@@ -20,7 +20,15 @@ export function distanceKm(a: GeoPoint, b: GeoPoint): number {
 }
 
 export function normalizeTownKey(town: string | null | undefined): string {
-  return (town ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+  return (town ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/'/g, "")
+    .replace(/\s+/g, " ");
+}
+
+export function normalizeCountyKey(county: string | null | undefined): string {
+  return (county ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 /** Normalize Kenyan MSISDN to 254XXXXXXXXX for dedupe keys. */

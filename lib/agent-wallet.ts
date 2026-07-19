@@ -6,6 +6,7 @@ import {
   PREMIUM_COMMISSION,
 } from "@/lib/commissions";
 import type { AirtelCommissionBasisRow } from "@/lib/airtel-commission-effective";
+import { getLeadInstallCommissionKes } from "@/lib/lead-install-commission";
 
 export type CommissionRates = { standard: number; premium: number };
 
@@ -25,6 +26,7 @@ export type PaymentLedgerRow = { amount_ksh?: number | string | null };
 export type AgentWalletSummary = {
   airtelCommissionKsh: number;
   safaricomCommissionKsh: number;
+  leadInstallCommissionKsh: number;
   totalEarnedKsh: number;
   paidFromLedgerKsh: number;
   currentBalanceKsh: number;
@@ -60,11 +62,20 @@ export function sumPaidFromLedger(paymentRows: PaymentLedgerRow[]): number {
 export function computeAgentWalletSummary(input: {
   airtelInstalledRows: AirtelInstalledRow[];
   safaricomInstalledRows: SafaricomInstalledRow[];
+  leadInstallRows?: Array<{
+    commission_earned_ksh?: number | string | null;
+    status?: string | null;
+  }>;
   paymentRows: PaymentLedgerRow[];
   rates: CommissionRates;
 }): AgentWalletSummary {
-  const { airtelInstalledRows, safaricomInstalledRows, paymentRows, rates } =
-    input;
+  const {
+    airtelInstalledRows,
+    safaricomInstalledRows,
+    leadInstallRows = [],
+    paymentRows,
+    rates,
+  } = input;
 
   const airtelCommissionKsh = airtelInstalledRows.reduce(
     (sum, row) =>
@@ -81,13 +92,21 @@ export function computeAgentWalletSummary(input: {
     0
   );
 
-  const totalEarnedKsh = airtelCommissionKsh + safaricomCommissionKsh;
+  // Flat KSh 200 per installed inbound lead (see lead-install-commission.ts)
+  const leadInstallCommissionKsh = leadInstallRows.reduce(
+    (sum, row) => sum + getLeadInstallCommissionKes(row),
+    0
+  );
+
+  const totalEarnedKsh =
+    airtelCommissionKsh + safaricomCommissionKsh + leadInstallCommissionKsh;
   const paidFromLedgerKsh = sumPaidFromLedger(paymentRows);
   const currentBalanceKsh = Math.max(0, totalEarnedKsh - paidFromLedgerKsh);
 
   return {
     airtelCommissionKsh,
     safaricomCommissionKsh,
+    leadInstallCommissionKsh,
     totalEarnedKsh,
     paidFromLedgerKsh,
     currentBalanceKsh,

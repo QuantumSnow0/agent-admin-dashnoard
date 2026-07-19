@@ -3,7 +3,12 @@
  * Ranks by distance to lead town centroid.
  */
 
-import { distanceKm, normalizeTownKey, type GeoPoint } from "./geo.ts";
+import {
+  distanceKm,
+  normalizeCountyKey,
+  normalizeTownKey,
+  type GeoPoint,
+} from "./geo.ts";
 
 export type LocationRef = {
   town_key: string;
@@ -19,7 +24,20 @@ export type AgentCandidate = {
   town: string | null;
   lead_dispatch_scope: string;
   is_available: boolean;
+  last_seen_at: string | null;
+  is_fallback_agent?: boolean;
+  fallback_priority?: number;
 };
+
+/** Agent opened the app recently (heartbeat), not merely "available" toggle. */
+export function isAgentOnline(
+  lastSeenAt: string | null | undefined,
+  presenceMinutes: number,
+): boolean {
+  if (!lastSeenAt) return false;
+  const elapsedMs = Date.now() - new Date(lastSeenAt).getTime();
+  return elapsedMs >= 0 && elapsedMs <= presenceMinutes * 60 * 1000;
+}
 
 export type RankedAgent = AgentCandidate & {
   distance_km: number;
@@ -63,7 +81,7 @@ export function resolveAgentPoint(
   return { latitude: ref.latitude, longitude: ref.longitude };
 }
 
-/** Rank eligible agents in the lead's county by ascending distance. */
+/** Rank eligible agents: online first (heartbeat), then offline-but-available, by distance. */
 export function rankAgentsInCounty(
   leadCounty: string,
   leadPoint: GeoPoint,
@@ -72,12 +90,15 @@ export function rankAgentsInCounty(
   product: "airtel" | "safaricom",
   openLeadCounts: Map<string, number>,
   maxOpenLeads: number,
+  onlinePresenceMinutes: number = 5,
 ): RankedAgent[] {
   const ranked: RankedAgent[] = [];
 
   for (const agent of agents) {
     if (!agent.is_available) continue;
-    if (agent.county !== leadCounty) continue;
+    if (normalizeCountyKey(agent.county) !== normalizeCountyKey(leadCounty)) {
+      continue;
+    }
     if (!agentAcceptsProduct(agent.lead_dispatch_scope, product)) continue;
 
     const open = openLeadCounts.get(agent.agent_id) ?? 0;
@@ -93,6 +114,66 @@ export function rankAgentsInCounty(
   }
 
   ranked.sort((a, b) => a.distance_km - b.distance_km);
+
+  const online = ranked.filter((a) =>
+    isAgentOnline(a.last_seen_at, onlinePresenceMinutes),
+  );
+  const offline = ranked.filter(
+    (a) => !isAgentOnline(a.last_seen_at, onlinePresenceMinutes),
+  );
+  return [...online, ...offline];
+}
+
+/**
+ * County-agnostic fallback agents (admin-designated).
+ * Used when no county agent is available / all declined / town unknown —
+ * before sending the lead to admin_queue.
+ */
+export function rankFallbackAgents(
+  leadPoint: GeoPoint | null,
+  agents: AgentCandidate[],
+  locationRefs: LocationRef[],
+  product: "airtel" | "safaricom",
+  openLeadCounts: Map<string, number>,
+  maxOpenLeads: number,
+  onlinePresenceMinutes: number = 5,
+): RankedAgent[] {
+  const ranked: RankedAgent[] = [];
+
+  for (const agent of agents) {
+    if (!agent.is_fallback_agent) continue;
+    if (!agent.is_available) continue;
+    if (!agentAcceptsProduct(agent.lead_dispatch_scope, product)) continue;
+
+    const open = openLeadCounts.get(agent.agent_id) ?? 0;
+    if (open >= maxOpenLeads) continue;
+
+    let distance_km = 99999;
+    if (leadPoint) {
+      const agentPoint = resolveAgentPoint(agent.town, locationRefs);
+      if (agentPoint) {
+        distance_km = distanceKm(leadPoint, agentPoint);
+      }
+    }
+
+    ranked.push({
+      ...agent,
+      distance_km,
+    });
+  }
+
+  ranked.sort((a, b) => {
+    const priorityA = a.fallback_priority ?? 100;
+    const priorityB = b.fallback_priority ?? 100;
+    if (priorityA !== priorityB) return priorityA - priorityB;
+
+    const aOnline = isAgentOnline(a.last_seen_at, onlinePresenceMinutes);
+    const bOnline = isAgentOnline(b.last_seen_at, onlinePresenceMinutes);
+    if (aOnline !== bOnline) return aOnline ? -1 : 1;
+
+    return a.distance_km - b.distance_km;
+  });
+
   return ranked;
 }
 

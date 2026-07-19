@@ -36,3 +36,33 @@ enabled = true
 verify_jwt = true
 import_map = "./functions/lead-outcome/deno.json"
 entrypoint = "./functions/lead-outcome/index.ts"
+
+[functions.send-lead-contact-otp]
+enabled = true
+verify_jwt = true
+import_map = "./functions/send-lead-contact-otp/deno.json"
+entrypoint = "./functions/send-lead-contact-otp/index.ts"
+
+[functions.verify-lead-contact-otp]
+enabled = true
+verify_jwt = true
+import_map = "./functions/verify-lead-contact-otp/deno.json"
+entrypoint = "./functions/verify-lead-contact-otp/index.ts"
+
+[functions.complete-lead-registration]
+enabled = true
+verify_jwt = true
+import_map = "./functions/complete-lead-registration/deno.json"
+entrypoint = "./functions/complete-lead-registration/index.ts"
+
+[functions.agent-heartbeat]
+enabled = true
+verify_jwt = true
+import_map = "./functions/agent-heartbeat/deno.json"
+entrypoint = "./functions/agent-heartbeat/index.ts"
+
+[functions.send-push-notification]
+enabled = true
+verify_jwt = false
+import_map = "./functions/send-push-notification/deno.json"
+entrypoint = "./functions/send-push-notification/index.ts"

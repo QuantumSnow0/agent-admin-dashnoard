@@ -52,6 +52,7 @@ export default async function RegistrationsPage({ searchParams }: RegistrationsP
   let customerQuery = supabase
     .from("customer_registrations")
     .select(CUSTOMER_SELECT)
+    .eq("commission_exempt", false)
     .order("created_at", { ascending: false });
 
   let safaricomQuery = supabase
@@ -100,17 +101,17 @@ export default async function RegistrationsPage({ searchParams }: RegistrationsP
     customerQuery,
     safaricomQuery,
     supabase.from("agents").select("id, name").order("name", { ascending: true, nullsFirst: false }),
-    supabase.from("customer_registrations").select("*", { count: "exact", head: true }),
+    supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("commission_exempt", false),
     supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }),
-    supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("status", "pending"),
+    supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("commission_exempt", false).eq("status", "pending"),
     supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }).eq("status", "pending"),
-    supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("status", "rejected"),
+    supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("commission_exempt", false).eq("status", "rejected"),
     supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }).eq("status", "rejected"),
-    supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("status", "duplicate"),
+    supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("commission_exempt", false).eq("status", "duplicate"),
     supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }).eq("status", "duplicate"),
-    supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("status", "cancelled"),
+    supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("commission_exempt", false).eq("status", "cancelled"),
     supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }).eq("status", "cancelled"),
-    supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("status", "installed"),
+    supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("commission_exempt", false).eq("status", "installed"),
     supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }).eq("status", "installed"),
   ]);
 

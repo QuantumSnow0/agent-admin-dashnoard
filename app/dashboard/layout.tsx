@@ -71,6 +71,16 @@ export default async function DashboardLayout({
       iconName: "registrations" as const,
     },
     {
+      name: "Inbound leads",
+      href: "/dashboard/leads",
+      iconName: "leads" as const,
+    },
+    {
+      name: "Lead installations",
+      href: "/dashboard/lead-installations",
+      iconName: "registrations" as const,
+    },
+    {
       name: "Send notification",
       href: "/dashboard/send-notification",
       iconName: "send-notification" as const,

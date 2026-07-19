@@ -4,6 +4,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { ChevronLeft, Wallet, TrendingUp, Users, Package, Sparkles, Bell } from "lucide-react";
 import { AgentActions } from "@/components/agents/agent-actions";
+import { AgentDispatchScopeControl } from "@/components/agents/agent-dispatch-scope";
+import { AgentFallbackDispatchControl } from "@/components/agents/agent-fallback-dispatch";
 import { AgentRatingStars } from "@/components/agents/agent-rating-stars";
 import { AgentCustomersRegistered } from "@/components/agents/agent-customers-registered";
 import { AgentPaymentManager } from "@/components/agents/agent-payment-manager";
@@ -58,7 +60,7 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
 
   const { data: agent, error } = await supabase
     .from("agents")
-    .select("id, name, email, airtel_phone, safaricom_phone, town, area, status, created_at, total_earnings, available_balance")
+    .select("id, name, email, airtel_phone, safaricom_phone, town, area, status, created_at, total_earnings, available_balance, lead_dispatch_scope, is_fallback_agent, fallback_priority")
     .eq("id", id)
     .single();
 
@@ -74,20 +76,23 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
     { data: safaricomRegs },
     { data: paymentRows, error: paymentRowsError },
     { data: safInstalledRows, error: safInstalledRowsError },
+    { data: leadInstallRows, error: leadInstallRowsError },
     { data: appRating },
     commissionRates,
   ] = await Promise.all([
-    supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("agent_id", id),
+    supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("agent_id", id).eq("commission_exempt", false),
     supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }).eq("agent_id", id),
     supabase
       .from("customer_registrations")
       .select("preferred_package, units_required, commission_package, commission_units")
       .eq("agent_id", id)
-      .eq("status", "installed"),
+      .eq("status", "installed")
+      .eq("commission_exempt", false),
     supabase
       .from("customer_registrations")
       .select(CUSTOMER_REGISTRATION_ADMIN_SELECT)
       .eq("agent_id", id)
+      .eq("commission_exempt", false)
       .order("created_at", { ascending: false }),
     supabase
       .from("safaricom_registrations")
@@ -102,6 +107,11 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
       .from("safaricom_registrations")
       .select("service_package, fiber_deal_id, portable_deal_id, dedicated_wifi_deal_id")
       .eq("agent_id", id)
+      .eq("status", "installed"),
+    supabase
+      .from("inbound_leads")
+      .select("commission_earned_ksh, status")
+      .eq("assigned_agent_id", id)
       .eq("status", "installed"),
     supabase
       .from("app_ratings")
@@ -122,6 +132,8 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
     airtelInstalledRows: airtelInstalledRows ?? [],
     safaricomInstalledRows:
       safInstalledRowsError || !safInstalledRows ? [] : safInstalledRows,
+    leadInstallRows:
+      leadInstallRowsError || !leadInstallRows ? [] : leadInstallRows,
     paymentRows: paymentRowsError || !paymentRows ? [] : paymentRows,
     rates: commissionRates,
   });
@@ -129,6 +141,7 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
     totalEarnedKsh: computedTotalEarningsKsh,
     paidFromLedgerKsh,
     currentBalanceKsh: computedBalanceKsh,
+    leadInstallCommissionKsh,
   } = wallet;
   const registrations = mergeRegistrationsByDate([
     ...(customerRegs ?? []).map((r) => mapCustomerRegistrationToAdminRow(r as Record<string, unknown>)),
@@ -205,6 +218,12 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
               </span>
             </div>
             <div className="flex items-center gap-1.5">
+              <span className="text-gray-500">Lead installs</span>
+              <span className="font-semibold tabular-nums text-gray-900">
+                KSh {leadInstallCommissionKsh.toLocaleString()}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
               <Wallet className="h-3.5 w-3.5 shrink-0 text-indigo-600" />
               <span className="text-gray-500">Balance</span>
               <span className="font-semibold tabular-nums text-gray-900">
@@ -261,6 +280,17 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
           />
         </div>
       </header>
+
+      <AgentDispatchScopeControl
+        agentId={agent.id}
+        initialScope={agent.lead_dispatch_scope ?? "both"}
+      />
+
+      <AgentFallbackDispatchControl
+        agentId={agent.id}
+        initialEnabled={Boolean(agent.is_fallback_agent)}
+        initialPriority={Number(agent.fallback_priority ?? 100)}
+      />
 
       <AgentCustomersRegistered registrations={registrations ?? []} />
     </div>
