@@ -98,10 +98,10 @@ Deno.serve(async (req) => {
 
     if (attemptError) {
       console.error("verify-lead-contact-otp lookup:", attemptError.message);
-      return jsonResponse({ error: "Could not check verification code" }, 500);
+      return jsonResponse({ error: "Could not check confirmation code" }, 500);
     }
     if (!attempt) {
-      return jsonResponse({ error: "Send a new verification code first" }, 404);
+      return jsonResponse({ error: "Send a new confirmation code first" }, 404);
     }
     if (new Date(attempt.expires_at).getTime() <= Date.now()) {
       return jsonResponse({ error: "This code has expired. Send a new one." }, 410);
@@ -123,7 +123,7 @@ Deno.serve(async (req) => {
           error:
             nextAttempts >= MAX_VERIFY_ATTEMPTS
               ? "Too many incorrect attempts. Send a new code."
-              : "Incorrect verification code",
+              : "Incorrect confirmation code",
           attemptsRemaining: Math.max(0, MAX_VERIFY_ATTEMPTS - nextAttempts),
         },
         nextAttempts >= MAX_VERIFY_ATTEMPTS ? 429 : 400,

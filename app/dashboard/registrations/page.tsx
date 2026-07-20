@@ -60,7 +60,9 @@ export default async function RegistrationsPage({ searchParams }: RegistrationsP
     .select(SAFARICOM_SELECT)
     .order("created_at", { ascending: false });
 
-  if (statusFilter === "closed") {
+  if (statusFilter === "airtel_queue") {
+    customerQuery = customerQuery.is("ms_forms_response_id", null);
+  } else if (statusFilter === "closed") {
     customerQuery = customerQuery.in("status", REGISTRATION_CLOSED_STATUSES);
     safaricomQuery = safaricomQuery.in("status", REGISTRATION_CLOSED_STATUSES);
   } else if (statusFilter !== "all") {
@@ -69,17 +71,26 @@ export default async function RegistrationsPage({ searchParams }: RegistrationsP
   }
   if (agentIdFilter) {
     customerQuery = customerQuery.eq("agent_id", agentIdFilter);
-    safaricomQuery = safaricomQuery.eq("agent_id", agentIdFilter);
+    if (statusFilter !== "airtel_queue") {
+      safaricomQuery = safaricomQuery.eq("agent_id", agentIdFilter);
+    }
   }
   if (searchQuery) {
     const escaped = escapeSearch(searchQuery);
     customerQuery = customerQuery.or(
       `customer_name.ilike.%${escaped}%,email.ilike.%${escaped}%,airtel_number.ilike.%${escaped}%,alternate_number.ilike.%${escaped}%,installation_town.ilike.%${escaped}%,delivery_landmark.ilike.%${escaped}%`
     );
-    safaricomQuery = safaricomQuery.or(
-      `customer_name.ilike.%${escaped}%,email.ilike.%${escaped}%,safaricom_number.ilike.%${escaped}%,alternate_number.ilike.%${escaped}%,identification_number.ilike.%${escaped}%,date_of_birth.ilike.%${escaped}%,service_package.ilike.%${escaped}%,fiber_region_name.ilike.%${escaped}%,fiber_cluster_name.ilike.%${escaped}%,install_county.ilike.%${escaped}%,install_town.ilike.%${escaped}%,install_landmark.ilike.%${escaped}%`
-    );
+    if (statusFilter !== "airtel_queue") {
+      safaricomQuery = safaricomQuery.or(
+        `customer_name.ilike.%${escaped}%,email.ilike.%${escaped}%,safaricom_number.ilike.%${escaped}%,alternate_number.ilike.%${escaped}%,identification_number.ilike.%${escaped}%,date_of_birth.ilike.%${escaped}%,service_package.ilike.%${escaped}%,fiber_region_name.ilike.%${escaped}%,fiber_cluster_name.ilike.%${escaped}%,install_county.ilike.%${escaped}%,install_town.ilike.%${escaped}%,install_landmark.ilike.%${escaped}%`
+      );
+    }
   }
+
+  const safaricomPromise =
+    statusFilter === "airtel_queue"
+      ? Promise.resolve({ data: [] as Record<string, unknown>[], error: null })
+      : safaricomQuery;
 
   const [
     { data: customerRows, error: customerError },
@@ -97,9 +108,10 @@ export default async function RegistrationsPage({ searchParams }: RegistrationsP
     { count: safCancelled },
     { count: custInstalled },
     { count: safInstalled },
+    { count: airtelQueueCount },
   ] = await Promise.all([
     customerQuery,
-    safaricomQuery,
+    safaricomPromise,
     supabase.from("agents").select("id, name").order("name", { ascending: true, nullsFirst: false }),
     supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("commission_exempt", false),
     supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }),
@@ -113,16 +125,11 @@ export default async function RegistrationsPage({ searchParams }: RegistrationsP
     supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }).eq("status", "cancelled"),
     supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("commission_exempt", false).eq("status", "installed"),
     supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }).eq("status", "installed"),
-  ]);
-
-  const error = customerError ?? safaricomError;
-  if (error) {
-    console.error("Error fetching registrations:", error);
-  }
-
-  const merged = mergeRegistrationsByDate([
-    ...(customerRows ?? []).map((r) => mapCustomerRegistrationToAdminRow(r as Record<string, unknown>)),
-    ...(safaricomRows ?? []).map((r) => mapSafaricomRegistrationToAdminRow(r as Record<string, unknown>)),
+    supabase
+      .from("customer_registrations")
+      .select("*", { count: "exact", head: true })
+      .eq("commission_exempt", false)
+      .is("ms_forms_response_id", null),
   ]);
 
   const totalCount = (custTotal ?? 0) + (safTotal ?? 0);
@@ -132,6 +139,29 @@ export default async function RegistrationsPage({ searchParams }: RegistrationsP
   const cancelledCount = (custCancelled ?? 0) + (safCancelled ?? 0);
   const closedCount = rejectedCount + duplicateCount + cancelledCount;
   const installedCount = (custInstalled ?? 0) + (safInstalled ?? 0);
+  const airtelMsFormsQueueCount = airtelQueueCount ?? 0;
+
+  const listError =
+    statusFilter === "airtel_queue" ? customerError : customerError ?? safaricomError;
+  if (listError) {
+    console.error("Error fetching registrations:", listError);
+  }
+
+  const merged =
+    statusFilter === "airtel_queue"
+      ? mergeRegistrationsByDate([
+          ...(customerRows ?? []).map((r) =>
+            mapCustomerRegistrationToAdminRow(r as Record<string, unknown>),
+          ),
+        ])
+      : mergeRegistrationsByDate([
+          ...(customerRows ?? []).map((r) =>
+            mapCustomerRegistrationToAdminRow(r as Record<string, unknown>),
+          ),
+          ...(safaricomRows ?? []).map((r) =>
+            mapSafaricomRegistrationToAdminRow(r as Record<string, unknown>),
+          ),
+        ]);
 
   const countCards = [
     { title: "All", value: totalCount, href: "/dashboard/registrations", icon: FileText, cardBg: "bg-slate-600" },
@@ -148,6 +178,7 @@ export default async function RegistrationsPage({ searchParams }: RegistrationsP
       </div>
       <p className="text-sm text-gray-600">
         Pending = awaiting outcome. Installed = commission earned. Use Rejected, Duplicate, or Cancelled when the order will not be installed.
+        Airtel queue = not yet submitted to Microsoft Forms — submit from the detail panel if auto-submit fails.
       </p>
 
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
@@ -178,7 +209,7 @@ export default async function RegistrationsPage({ searchParams }: RegistrationsP
 
       <RegistrationsView
         registrations={merged}
-        error={error}
+        error={listError ? new Error(listError.message) : null}
         statusFilter={statusFilter}
         searchQuery={searchQuery}
         agentIdFilter={agentIdFilter}
@@ -191,6 +222,7 @@ export default async function RegistrationsPage({ searchParams }: RegistrationsP
           rejected: rejectedCount,
           duplicate: duplicateCount,
           cancelled: cancelledCount,
+          airtelQueue: airtelMsFormsQueueCount,
         }}
       />
     </div>

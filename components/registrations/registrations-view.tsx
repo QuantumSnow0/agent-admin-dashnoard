@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState, useEffect, useCallback } from "react";
 import { useDebouncedSearchParam } from "@/lib/hooks/use-debounced-search-param";
-import { FileText, Clock, Package, Search, User, XCircle, Copy, Ban } from "lucide-react";
+import { FileText, Clock, Package, Search, User, XCircle, Copy, Ban, Send } from "lucide-react";
 import {
   REGISTRATION_STATUS_STYLES,
   formatRegistrationStatusLabel,
@@ -25,6 +25,7 @@ type RegistrationCounts = {
   rejected: number;
   duplicate: number;
   cancelled: number;
+  airtelQueue: number;
 };
 
 interface RegistrationsViewProps {
@@ -178,6 +179,10 @@ export function RegistrationsView({
               <Clock className="mr-1.5 h-3.5 w-3.5" />
               Pending ({counts.pending})
             </TabsTrigger>
+            <TabsTrigger value="airtel_queue" className="rounded-md px-3 text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm">
+              <Send className="mr-1.5 h-3.5 w-3.5" />
+              Airtel queue ({counts.airtelQueue})
+            </TabsTrigger>
             <TabsTrigger value="installed" className="rounded-md px-3 text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm">
               <Package className="mr-1.5 h-3.5 w-3.5" />
               Installed ({counts.installed})
@@ -209,7 +214,9 @@ export function RegistrationsView({
                   ? "No registrations match your search or agent filter."
                   : statusFilter === "all"
                     ? "No customer registrations yet."
-                    : `No ${statusFilter} registrations.`}
+                    : statusFilter === "airtel_queue"
+                      ? "No Airtel orders waiting for MS Forms."
+                      : `No ${statusFilter} registrations.`}
               </p>
             </div>
           ) : (

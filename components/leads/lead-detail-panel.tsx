@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   AlertTriangle,
   ExternalLink,
+  Loader2,
   RefreshCw,
   Search,
   Send,
@@ -113,6 +114,12 @@ export function LeadDetailPanel({
   const [agentSearch, setAgentSearch] = useState("");
   const [selectedAgentId, setSelectedAgentId] = useState("");
   const [sendingOffer, setSendingOffer] = useState(false);
+  const [msFormsLoading, setMsFormsLoading] = useState(false);
+  const [msFormsMessage, setMsFormsMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    setMsFormsMessage(null);
+  }, [lead?.id]);
 
   const canDispatch =
     lead && !installReviewMode
@@ -178,6 +185,33 @@ export function LeadDetailPanel({
       setSelectedAgentId("");
     } finally {
       setSendingOffer(false);
+    }
+  };
+
+  const handleSubmitToAirtel = async () => {
+    if (!lead?.registration_id) return;
+    setMsFormsLoading(true);
+    setMsFormsMessage(null);
+    try {
+      const res = await fetch(
+        `/api/admin/registrations/${lead.registration_id}/submit-ms-forms`,
+        { method: "POST" },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(data.error ?? "Could not submit to Airtel");
+      }
+      setMsFormsMessage(
+        data.alreadySubmitted
+          ? "Already submitted to Airtel (MS Forms)."
+          : "Submitted to Airtel. Order left the Airtel / MS Forms queue.",
+      );
+    } catch (err: unknown) {
+      setMsFormsMessage(
+        err instanceof Error ? err.message : "Submission failed",
+      );
+    } finally {
+      setMsFormsLoading(false);
     }
   };
 
@@ -311,7 +345,7 @@ export function LeadDetailPanel({
             {lead.contact_verified_at ? (
               <Field
                 label="Contact verified"
-                value={`${formatWhen(lead.contact_verified_at)} via SMS OTP`}
+                value={`${formatWhen(lead.contact_verified_at)} via SMS confirmation`}
               />
             ) : null}
             {lead.contact_verified_phone ? (
@@ -419,6 +453,34 @@ export function LeadDetailPanel({
             <Field label="Source" value={lead.source} />
             <Field label="Submitted" value={formatWhen(lead.created_at)} />
           </dl>
+
+          {lead.product === "airtel" && lead.registration_id ? (
+            <div className="mt-6 border-t border-gray-100 pt-4">
+              <SectionTitle>Airtel MS Forms</SectionTitle>
+              <p className="mb-3 text-sm text-gray-600">
+                Fallback if auto-submit failed. Submitting posts this registration
+                to Microsoft Forms and clears it from the Airtel queue.
+              </p>
+              {msFormsMessage ? (
+                <p className="mb-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800">
+                  {msFormsMessage}
+                </p>
+              ) : null}
+              <Button
+                type="button"
+                className="w-full justify-center bg-red-600 hover:bg-red-700"
+                disabled={msFormsLoading || actionLoading !== null}
+                onClick={() => void handleSubmitToAirtel()}
+              >
+                {msFormsLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="mr-2 h-4 w-4" />
+                )}
+                {msFormsLoading ? "Submitting to Airtel…" : "Submit to Airtel"}
+              </Button>
+            </div>
+          ) : null}
 
           {canDispatch ? (
             <div className="mt-6 border-t border-gray-100 pt-4">

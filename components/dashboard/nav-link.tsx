@@ -2,12 +2,25 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Users, FileText, Bell, Inbox } from "lucide-react";
+import {
+  LayoutDashboard,
+  Users,
+  FileText,
+  Bell,
+  Inbox,
+  ImageIcon,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface NavLinkProps {
   href: string;
-  iconName: "dashboard" | "agents" | "registrations" | "leads" | "send-notification";
+  iconName:
+    | "dashboard"
+    | "agents"
+    | "registrations"
+    | "leads"
+    | "home-promos"
+    | "send-notification";
   children: React.ReactNode;
 }
 
@@ -16,6 +29,7 @@ const iconMap = {
   agents: Users,
   registrations: FileText,
   leads: Inbox,
+  "home-promos": ImageIcon,
   "send-notification": Bell,
 };
 

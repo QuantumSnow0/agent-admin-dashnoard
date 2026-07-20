@@ -182,7 +182,7 @@ Deno.serve(async (req) => {
 
     if (insertError || !attempt) {
       console.error("send-lead-contact-otp insert:", insertError?.message);
-      return jsonResponse({ error: "Could not prepare verification code" }, 500);
+      return jsonResponse({ error: "Could not prepare confirmation code" }, 500);
     }
 
     let smsResponse: Response;
@@ -202,7 +202,7 @@ Deno.serve(async (req) => {
             MessageParameters: [
               {
                 Number: phone,
-                Text: `Your Wam-Apps customer verification code is ${code}. It expires in ${OTP_TTL_MINUTES} minutes. Share it only with the agent you are speaking to.`,
+                Text: `Wam Apps: Your contact confirmation code for your internet installation request is ${code}. This is not an M-Pesa or bank code. It expires in ${OTP_TTL_MINUTES} minutes. Tell it only to the Wam agent on this call.`,
               },
             ],
             ApiKey: onfonApiKey,
@@ -279,6 +279,6 @@ Deno.serve(async (req) => {
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "SMS send failed";
     console.error("send-lead-contact-otp:", message);
-    return jsonResponse({ error: "Could not send verification code" }, 500);
+    return jsonResponse({ error: "Could not send confirmation code" }, 500);
   }
 });
