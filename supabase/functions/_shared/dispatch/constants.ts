@@ -7,6 +7,8 @@ export const DISPATCH_DEFAULTS = {
   offerTimeoutMinutes: 15,
   slaHours: 24,
   maxOpenLeadsPerAgent: 3,
+  /** When false, auto-dispatch ignores max_open_leads_per_agent. */
+  maxOpenLeadsEnabled: true,
   onlinePresenceMinutes: 5,
 } as const;
 

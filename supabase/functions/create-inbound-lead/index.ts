@@ -32,6 +32,9 @@ type InboundBody = {
   visitTime?: string | null;
   nationalId?: string | null;
   dateOfBirth?: string | null;
+  /** Microsoft Forms response id from website signup (Airtel). */
+  msFormsResponseId?: string | number | null;
+  msFormsSubmittedAt?: string | null;
   metadata?: Record<string, unknown>;
 };
 
@@ -115,6 +118,19 @@ Deno.serve(async (req) => {
       }, 409);
     }
 
+    const metadata = body.metadata ?? {};
+    const msFromMeta = metadata.msFormsResponseId;
+    const msFormsResponseIdRaw =
+      body.msFormsResponseId ?? msFromMeta ?? null;
+    const msFormsResponseId =
+      msFormsResponseIdRaw != null && String(msFormsResponseIdRaw).trim() !== ""
+        ? String(msFormsResponseIdRaw)
+        : null;
+    const msFormsSubmittedAt =
+      msFormsResponseId
+        ? (body.msFormsSubmittedAt?.trim() || new Date().toISOString())
+        : null;
+
     const row = {
       source,
       source_external_id: body.sourceExternalId ?? null,
@@ -136,7 +152,9 @@ Deno.serve(async (req) => {
       national_id: body.nationalId?.trim() || null,
       date_of_birth: body.dateOfBirth || null,
       dedupe_phone_key: dedupeKey,
-      metadata: body.metadata ?? {},
+      ms_forms_response_id: msFormsResponseId,
+      ms_forms_submitted_at: msFormsSubmittedAt,
+      metadata,
     };
 
     const { data: lead, error: insertError } = await service

@@ -189,22 +189,25 @@ export function LeadDetailPanel({
   };
 
   const handleSubmitToAirtel = async () => {
-    if (!lead?.registration_id) return;
+    if (!lead || lead.product !== "airtel") return;
     setMsFormsLoading(true);
     setMsFormsMessage(null);
     try {
       const res = await fetch(
-        `/api/admin/registrations/${lead.registration_id}/submit-ms-forms`,
+        `/api/admin/leads/${lead.id}/submit-ms-forms`,
         { method: "POST" },
       );
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) {
         throw new Error(data.error ?? "Could not submit to Airtel");
       }
+      if (data.lead) {
+        onLeadUpdated(data.lead as AdminInboundLeadRow);
+      }
       setMsFormsMessage(
         data.alreadySubmitted
           ? "Already submitted to Airtel (MS Forms)."
-          : "Submitted to Airtel. Order left the Airtel / MS Forms queue.",
+          : "Submitted to Airtel via Microsoft Forms.",
       );
     } catch (err: unknown) {
       setMsFormsMessage(
@@ -454,13 +457,30 @@ export function LeadDetailPanel({
             <Field label="Submitted" value={formatWhen(lead.created_at)} />
           </dl>
 
-          {lead.product === "airtel" && lead.registration_id ? (
+          {lead.product === "airtel" ? (
             <div className="mt-6 border-t border-gray-100 pt-4">
               <SectionTitle>Airtel MS Forms</SectionTitle>
               <p className="mb-3 text-sm text-gray-600">
-                Fallback if auto-submit failed. Submitting posts this registration
-                to Microsoft Forms and clears it from the Airtel queue.
+                Submit this order to Airtel via Microsoft Forms. Available for
+                any lead status (queue, assigned, KYC, install, etc.).
               </p>
+              {lead.ms_forms_response_id ? (
+                <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                  <p className="font-medium">Already on Airtel</p>
+                  <p className="mt-0.5 break-all text-xs opacity-90">
+                    Response ID: {lead.ms_forms_response_id}
+                  </p>
+                  {lead.ms_forms_submitted_at ? (
+                    <p className="mt-0.5 text-xs opacity-90">
+                      Submitted {formatWhen(lead.ms_forms_submitted_at)}
+                    </p>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="mb-3 text-sm text-amber-800">
+                  Not submitted to Airtel yet (no MS Forms response ID).
+                </p>
+              )}
               {msFormsMessage ? (
                 <p className="mb-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800">
                   {msFormsMessage}
@@ -469,7 +489,11 @@ export function LeadDetailPanel({
               <Button
                 type="button"
                 className="w-full justify-center bg-red-600 hover:bg-red-700"
-                disabled={msFormsLoading || actionLoading !== null}
+                disabled={
+                  msFormsLoading ||
+                  actionLoading !== null ||
+                  Boolean(lead.ms_forms_response_id)
+                }
                 onClick={() => void handleSubmitToAirtel()}
               >
                 {msFormsLoading ? (
@@ -477,7 +501,11 @@ export function LeadDetailPanel({
                 ) : (
                   <Send className="mr-2 h-4 w-4" />
                 )}
-                {msFormsLoading ? "Submitting to Airtel…" : "Submit to Airtel"}
+                {msFormsLoading
+                  ? "Submitting to Airtel…"
+                  : lead.ms_forms_response_id
+                    ? "Already submitted"
+                    : "Submit to Airtel"}
               </Button>
             </div>
           ) : null}

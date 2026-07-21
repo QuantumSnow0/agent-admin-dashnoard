@@ -8,6 +8,8 @@ export const DISPATCH_DEFAULTS = {
   offerTimeoutMinutes: 15,
   slaHours: 24,
   maxOpenLeadsPerAgent: 3,
+  /** When false, auto-dispatch ignores max_open_leads_per_agent. */
+  maxOpenLeadsEnabled: true,
   /** Agent is "online" when last_seen_at is within this window (app heartbeat). */
   onlinePresenceMinutes: 5,
 } as const;

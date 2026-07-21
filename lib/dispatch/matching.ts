@@ -78,7 +78,8 @@ export function rankAgentsInCounty(
   locationRefs: LocationRef[],
   product: "airtel" | "safaricom",
   openLeadCounts: Map<string, number>,
-  maxOpenLeads: number,
+  /** null = cap disabled (unlimited). */
+  maxOpenLeads: number | null,
   onlinePresenceMinutes: number = 5,
 ): RankedAgent[] {
   const ranked: RankedAgent[] = [];
@@ -91,7 +92,7 @@ export function rankAgentsInCounty(
     if (!agentAcceptsProduct(agent.lead_dispatch_scope, product)) continue;
 
     const open = openLeadCounts.get(agent.agent_id) ?? 0;
-    if (open >= maxOpenLeads) continue;
+    if (maxOpenLeads != null && open >= maxOpenLeads) continue;
 
     const agentPoint = resolveAgentPoint(agent.town, locationRefs);
     if (!agentPoint) continue;
@@ -124,7 +125,8 @@ export function rankFallbackAgents(
   locationRefs: LocationRef[],
   product: "airtel" | "safaricom",
   openLeadCounts: Map<string, number>,
-  maxOpenLeads: number,
+  /** null = cap disabled (unlimited). */
+  maxOpenLeads: number | null,
   onlinePresenceMinutes: number = 5,
 ): RankedAgent[] {
   const ranked: RankedAgent[] = [];
@@ -135,7 +137,7 @@ export function rankFallbackAgents(
     if (!agentAcceptsProduct(agent.lead_dispatch_scope, product)) continue;
 
     const open = openLeadCounts.get(agent.agent_id) ?? 0;
-    if (open >= maxOpenLeads) continue;
+    if (maxOpenLeads != null && open >= maxOpenLeads) continue;
 
     let distance_km = 99999;
     if (leadPoint) {

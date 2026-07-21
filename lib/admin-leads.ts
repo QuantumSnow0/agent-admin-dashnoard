@@ -55,6 +55,8 @@ export type InboundLeadRecord = {
   safaricom_imei: string | null;
   registration_id: string | null;
   commission_earned_ksh: number | null;
+  ms_forms_response_id: string | null;
+  ms_forms_submitted_at: string | null;
   created_at: string;
   source_external_id: string | null;
   metadata: Record<string, unknown>;
@@ -110,6 +112,8 @@ const INBOUND_LEAD_SELECT = `
   safaricom_imei,
   registration_id,
   commission_earned_ksh,
+  ms_forms_response_id,
+  ms_forms_submitted_at,
   created_at,
   source_external_id,
   metadata
