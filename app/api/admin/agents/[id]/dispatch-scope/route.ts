@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { requireAdminApi } from "@/lib/admin-api";
 import { LEAD_DISPATCH_SCOPES } from "@/lib/dispatch/constants";
+import { notifyAgentLeadsDispatchEnabled } from "@/lib/notifications/notify-leads-enabled";
 
 type Body = { scope?: string };
 
@@ -29,6 +30,18 @@ export async function PATCH(
   try {
     const service = createServiceClient();
 
+    const { data: before } = await service
+      .from("agents")
+      .select("id, lead_dispatch_scope, status")
+      .eq("id", agentId)
+      .maybeSingle();
+
+    if (!before) {
+      return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+    }
+
+    const previousScope = before.lead_dispatch_scope ?? "none";
+
     const { data: agent, error } = await service
       .from("agents")
       .update({ lead_dispatch_scope: scope })
@@ -44,7 +57,30 @@ export async function PATCH(
       return NextResponse.json({ error: "Agent not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ success: true, lead_dispatch_scope: agent.lead_dispatch_scope });
+    // Turning dispatch off → pause availability so they leave the pool.
+    if (scope === "none" && previousScope !== "none") {
+      await service
+        .from("agent_dispatch_settings")
+        .upsert(
+          {
+            agent_id: agentId,
+            is_available: false,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "agent_id" },
+        );
+    }
+
+    // First-time (or re-)enable: nudge agent to turn on Receive leads.
+    if (previousScope === "none" && scope !== "none") {
+      await notifyAgentLeadsDispatchEnabled(service, agentId, scope);
+    }
+
+    return NextResponse.json({
+      success: true,
+      lead_dispatch_scope: agent.lead_dispatch_scope,
+      notified: previousScope === "none" && scope !== "none",
+    });
   } catch (err) {
     console.error("[admin/agents/dispatch-scope]", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
