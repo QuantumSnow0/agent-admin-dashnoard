@@ -36,16 +36,29 @@ export function AgentActions({ agent }: AgentActionsProps) {
     try {
       const supabase = createClient();
 
+      // Approving the account does NOT enable website leads.
+      // lead_dispatch_scope stays / resets to none until admin sets it.
+      const updatePayload: { status: string; lead_dispatch_scope?: string } = {
+        status: newStatus,
+      };
+      if (newStatus === "approved") {
+        updatePayload.lead_dispatch_scope = "none";
+      }
+
       const { error } = await supabase
         .from("agents")
-        .update({ status: newStatus })
+        .update(updatePayload)
         .eq("id", agent.id);
 
       if (error) {
         console.error("Error updating agent status:", error);
         alert(`Failed to update status: ${error.message}`);
       } else {
-        // Refresh the page to show updated status
+        if (newStatus === "approved") {
+          alert(
+            "Agent approved. Enable inbound leads separately under Lead dispatch (Airtel / Safaricom / both).",
+          );
+        }
         router.refresh();
       }
     } catch (error) {
@@ -69,6 +82,7 @@ export function AgentActions({ agent }: AgentActionsProps) {
             >
               <CheckCircle2 className="mr-2 h-4 w-4" />
               Approve Agent
+              <span className="ml-1 text-xs text-gray-500">(leads stay off)</span>
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => handleStatusChange("rejected")}
@@ -110,6 +124,7 @@ export function AgentActions({ agent }: AgentActionsProps) {
           >
             <CheckCircle2 className="mr-2 h-4 w-4" />
             Unban Agent
+            <span className="ml-1 text-xs text-gray-500">(re-enable leads after)</span>
           </DropdownMenuItem>
         );
       case "rejected":
@@ -121,6 +136,7 @@ export function AgentActions({ agent }: AgentActionsProps) {
           >
             <CheckCircle2 className="mr-2 h-4 w-4" />
             Approve Agent
+            <span className="ml-1 text-xs text-gray-500">(leads stay off)</span>
           </DropdownMenuItem>
         );
       default:

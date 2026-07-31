@@ -18,6 +18,8 @@ type Body = {
   airtelSrNumber?: string;
   safaricomImei?: string;
   notes?: string;
+  /** ISO date or datetime for callback reminder (action=defer). */
+  callbackAt?: string;
 };
 
 const RELEASE_ACTIONS = new Set([
@@ -54,6 +56,7 @@ Deno.serve(async (req) => {
       "kyc_failed",
       "installed",
       "release",
+      "defer",
     ]);
 
     if (!leadId || !validActions.has(action)) {
@@ -131,6 +134,23 @@ Deno.serve(async (req) => {
           status: "pending_install",
           idempotent: true,
         });
+      }
+
+      if (!lead.call_initiated_at) {
+        return jsonResponse(
+          { error: "Call the customer before submitting install proof" },
+          409,
+        );
+      }
+
+      if (lead.status === "assigned" && !lead.kyc_completed_at) {
+        return jsonResponse(
+          {
+            error:
+              "Mark the customer as contacted after the call, then submit install proof",
+          },
+          409,
+        );
       }
 
       const proofUpdate: Record<string, unknown> = {
@@ -213,61 +233,21 @@ Deno.serve(async (req) => {
     }
 
     if (action === "kyc_completed") {
-      // Airtel KYC must come from verified contact + MS Forms submission.
-      // Older clients that still call this action directly are rejected.
-      if (lead.product === "airtel") {
-        if (!lead.contact_verified_at) {
-          return jsonResponse(
-            {
-              error:
-                "Verify customer contact, then submit the registration form",
-            },
-            409,
-          );
-        }
-
-        if (!lead.registration_id) {
-          return jsonResponse(
-            {
-              error:
-                "Submit the prefilled registration before marking KYC complete",
-            },
-            409,
-          );
-        }
-
-        const { data: registration, error: registrationError } = await service
-          .from("customer_registrations")
-          .select("id, ms_forms_response_id, inbound_lead_id, agent_id")
-          .eq("id", lead.registration_id)
-          .maybeSingle();
-
-        if (registrationError || !registration) {
-          return jsonResponse({ error: "Linked registration not found" }, 409);
-        }
-
-        if (
-          registration.agent_id !== user.id ||
-          registration.inbound_lead_id !== leadId ||
-          !registration.ms_forms_response_id
-        ) {
-          return jsonResponse(
-            {
-              error:
-                "Airtel KYC completes only after registration submission succeeds",
-            },
-            409,
-          );
-        }
-      }
-
+      // "Spoke to customer" — website already submitted to Airtel MS Forms.
+      // No OTP / in-app registration gate (those were removed from the agent flow).
+      // call_started may still be in flight from the dialer; set timestamp if missing.
       const { error: updateError } = await service
         .from("inbound_leads")
         .update({
           status: "kyc_completed",
+          call_initiated_at: lead.call_initiated_at ?? now,
           kyc_completed_at: lead.kyc_completed_at ?? now,
           kyc_outcome: "completed",
-          metadata: prevMetadata,
+          metadata: {
+            ...prevMetadata,
+            contactedAt: now,
+            contactedBy: user.id,
+          },
         })
         .eq("id", leadId);
 
@@ -276,6 +256,93 @@ Deno.serve(async (req) => {
       }
 
       return jsonResponse({ success: true, status: "kyc_completed" });
+    }
+
+    if (action === "defer") {
+      const rawCallback = String(body.callbackAt ?? "").trim();
+      if (!rawCallback) {
+        return jsonResponse(
+          { error: "Pick a callback date for the reminder" },
+          400,
+        );
+      }
+
+      // Accept YYYY-MM-DD or ISO datetime; wake at 08:00 Africa/Nairobi that day.
+      const dateOnly = rawCallback.match(/^(\d{4}-\d{2}-\d{2})/);
+      let callbackAt: Date;
+      if (dateOnly) {
+        callbackAt = new Date(`${dateOnly[1]}T08:00:00+03:00`);
+      } else {
+        callbackAt = new Date(rawCallback);
+      }
+
+      if (Number.isNaN(callbackAt.getTime())) {
+        return jsonResponse({ error: "Invalid callback date" }, 400);
+      }
+
+      const startOfTodayEat = new Date();
+      // Compare calendar days in EAT roughly via ISO date strings.
+      const eatToday = new Date(
+        startOfTodayEat.toLocaleString("en-US", { timeZone: "Africa/Nairobi" }),
+      );
+      eatToday.setHours(0, 0, 0, 0);
+      if (callbackAt.getTime() < eatToday.getTime()) {
+        return jsonResponse(
+          { error: "Callback date must be today or later" },
+          400,
+        );
+      }
+
+      const maxDays = 62;
+      const maxAt = new Date(eatToday.getTime() + maxDays * 24 * 60 * 60 * 1000);
+      if (callbackAt.getTime() > maxAt.getTime()) {
+        return jsonResponse(
+          { error: "Callback date must be within the next two months" },
+          400,
+        );
+      }
+
+      const notes = String(body.notes ?? "").trim();
+      const { data: agentRow } = await service
+        .from("agents")
+        .select("name")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      const { error: updateError } = await service
+        .from("inbound_leads")
+        .update({
+          status: "deferred",
+          assigned_agent_id: null,
+          accepted_at: null,
+          preferred_agent_id: user.id,
+          callback_at: callbackAt.toISOString(),
+          reassignment_count: (lead.reassignment_count ?? 0) + 1,
+          metadata: {
+            ...prevMetadata,
+            lastDefer: {
+              callbackAt: callbackAt.toISOString(),
+              notes: notes || null,
+              agentId: user.id,
+              agentName: agentRow?.name ?? null,
+              at: now,
+              preservedCallInitiatedAt: lead.call_initiated_at ?? null,
+              preservedKycCompletedAt: lead.kyc_completed_at ?? null,
+            },
+          },
+        })
+        .eq("id", leadId);
+
+      if (updateError) {
+        console.error("lead-outcome defer:", updateError);
+        return jsonResponse({ error: "Failed to schedule reminder" }, 500);
+      }
+
+      return jsonResponse({
+        success: true,
+        status: "deferred",
+        callbackAt: callbackAt.toISOString(),
+      });
     }
 
     if (RELEASE_ACTIONS.has(action)) {

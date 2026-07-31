@@ -61,7 +61,9 @@ export function AgentDispatchScopeControl({ agentId, initialScope }: Props) {
         Inbound lead dispatch
       </Label>
       <p className="mt-1 text-sm text-gray-600">
-        Controls which website lead products this agent can receive when available.
+        Separate from account approval. Leave as &quot;No inbound leads&quot;
+        until you want this agent to receive website offers. Then choose Airtel,
+        Safaricom, or both.
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <Select value={scope} onValueChange={saveScope} disabled={saving}>

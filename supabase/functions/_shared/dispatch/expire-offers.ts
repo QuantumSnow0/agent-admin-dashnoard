@@ -1,5 +1,5 @@
 /**
- * Expire timed-out offers and re-dispatch without pg_cron.
+ * Expire timed-out offers, wake deferred callbacks, and re-dispatch.
  */
 
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
@@ -8,6 +8,7 @@ export type SweepResult = {
   expiredOffers: number;
   redispatchedLeadIds: string[];
   adminQueueRetried: number;
+  wokenDeferred: number;
 };
 
 type DispatchLeadResult =
@@ -18,7 +19,7 @@ type DispatchLeadResult =
 type DispatchLeadFn = (
   service: SupabaseClient,
   leadId: string,
-  options?: { skipSweep?: boolean },
+  options?: { skipSweep?: boolean; excludeAgentIds?: string[] },
 ) => Promise<DispatchLeadResult>;
 
 let sweepInProgress = false;
@@ -36,7 +37,7 @@ export async function expireStaleOffers(
     const now = new Date().toISOString();
     const { data: stale } = await service
       .from("lead_offers")
-      .select("id, lead_id")
+      .select("id, lead_id, agent_id")
       .eq("status", "offered")
       .lt("expires_at", now)
       .order("expires_at", { ascending: true })
@@ -56,6 +57,23 @@ export async function expireStaleOffers(
         .eq("id", offer.id)
         .eq("status", "offered");
 
+      // Preferred agent missed the reminder window → fall through to county/fallback.
+      const { data: leadRow } = await service
+        .from("inbound_leads")
+        .select("preferred_agent_id")
+        .eq("id", offer.lead_id)
+        .maybeSingle();
+
+      if (
+        leadRow?.preferred_agent_id &&
+        leadRow.preferred_agent_id === offer.agent_id
+      ) {
+        await service
+          .from("inbound_leads")
+          .update({ preferred_agent_id: null })
+          .eq("id", offer.lead_id);
+      }
+
       if (seenLeadIds.has(offer.lead_id)) continue;
       seenLeadIds.add(offer.lead_id);
 
@@ -70,7 +88,10 @@ export async function expireStaleOffers(
         lead?.status === "pending_dispatch" ||
         lead?.status === "needs_reassignment"
       ) {
-        await dispatchLead(service, offer.lead_id, { skipSweep: true });
+        await dispatchLead(service, offer.lead_id, {
+          skipSweep: true,
+          excludeAgentIds: [offer.agent_id as string],
+        });
         redispatchedLeadIds.push(offer.lead_id);
       }
     }
@@ -79,6 +100,57 @@ export async function expireStaleOffers(
   } finally {
     sweepInProgress = false;
   }
+}
+
+/**
+ * Wake deferred leads whose callback_at has arrived.
+ * Preferred agent is tried first inside dispatchLead.
+ */
+export async function wakeDeferredLeads(
+  service: SupabaseClient,
+  dispatchLead: DispatchLeadFn,
+  limit = 25,
+): Promise<number> {
+  const now = new Date().toISOString();
+  const { data: due } = await service
+    .from("inbound_leads")
+    .select("id, metadata")
+    .eq("status", "deferred")
+    .lte("callback_at", now)
+    .order("callback_at", { ascending: true })
+    .limit(limit);
+
+  let woken = 0;
+  for (const row of due ?? []) {
+    const prevMetadata =
+      row.metadata && typeof row.metadata === "object"
+        ? (row.metadata as Record<string, unknown>)
+        : {};
+
+    const { error } = await service
+      .from("inbound_leads")
+      .update({
+        status: "needs_reassignment",
+        assigned_agent_id: null,
+        accepted_at: null,
+        metadata: {
+          ...prevMetadata,
+          callbackWokenAt: now,
+        },
+      })
+      .eq("id", row.id)
+      .eq("status", "deferred");
+
+    if (error) {
+      console.error("wakeDeferredLeads update:", error);
+      continue;
+    }
+
+    await dispatchLead(service, row.id, { skipSweep: true });
+    woken += 1;
+  }
+
+  return woken;
 }
 
 export async function retryAdminQueueForCounty(
@@ -118,6 +190,7 @@ export async function runDispatchSweep(
   dispatchLead: DispatchLeadFn,
   options?: { county?: string | null },
 ): Promise<SweepResult> {
+  const wokenDeferred = await wakeDeferredLeads(service, dispatchLead);
   const expired = await expireStaleOffers(service, dispatchLead);
   let adminQueueRetried = 0;
   if (options?.county?.trim()) {
@@ -130,5 +203,6 @@ export async function runDispatchSweep(
   return {
     ...expired,
     adminQueueRetried,
+    wokenDeferred,
   };
 }

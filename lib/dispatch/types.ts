@@ -55,10 +55,12 @@ export type LeadOfferPreview = {
 export type LeadOfferAction = "accept" | "decline";
 
 export type LeadOutcomeAction =
+  | "call_started"
   | "kyc_started"
   | "kyc_completed"
   | "unreachable"
   | "declined"
   | "kyc_failed"
   | "installed"
-  | "release";
+  | "release"
+  | "defer";

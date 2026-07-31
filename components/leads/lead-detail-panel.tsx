@@ -38,6 +38,7 @@ const STATUS_STYLES: Record<string, string> = {
   installed: "bg-green-100 text-green-800 border-green-200",
   lost: "bg-gray-100 text-gray-700 border-gray-200",
   expired: "bg-gray-100 text-gray-600 border-gray-200",
+  deferred: "bg-indigo-100 text-indigo-900 border-indigo-200",
 };
 
 function productBadge(product: string) {
@@ -366,6 +367,9 @@ export function LeadDetailPanel({
             />
             {lead.visit_date ? <Field label="Visit date" value={lead.visit_date} /> : null}
             {lead.visit_time ? <Field label="Visit time" value={lead.visit_time} /> : null}
+            {lead.callback_at ? (
+              <Field label="Callback reminder" value={formatWhen(lead.callback_at)} />
+            ) : null}
 
             <SectionTitle>Dispatch</SectionTitle>
             <Field label="Assigned agent" value={lead.assigned_agent_name} />

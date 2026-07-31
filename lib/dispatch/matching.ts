@@ -177,6 +177,7 @@ export function buildOfferPreview(
   packageLabel: string | null,
   createdAt: string,
   distanceKmValue: number | null,
+  extras?: { isCallbackReminder?: boolean },
 ): Record<string, unknown> {
   const roughArea =
     installationArea?.trim() || deliveryLandmark?.trim() || null;
@@ -192,5 +193,6 @@ export function buildOfferPreview(
     submittedAgoMinutes,
     distanceKm:
       distanceKmValue != null ? Math.round(distanceKmValue * 10) / 10 : null,
+    ...(extras?.isCallbackReminder ? { isCallbackReminder: true } : {}),
   };
 }

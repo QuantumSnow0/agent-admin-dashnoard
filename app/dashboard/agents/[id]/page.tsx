@@ -283,7 +283,7 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
 
       <AgentDispatchScopeControl
         agentId={agent.id}
-        initialScope={agent.lead_dispatch_scope ?? "both"}
+        initialScope={agent.lead_dispatch_scope ?? "none"}
       />
 
       <AgentFallbackDispatchControl

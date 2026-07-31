@@ -9,10 +9,13 @@ import { DISPATCH_DEFAULTS, NOTIFICATION_TYPE_LEAD_OFFER } from "./constants.ts"
 import { formatLeadOfferNotificationCopy } from "./lead-offer-notification-copy.ts";
 import { expireStaleOffers, runDispatchSweep } from "./expire-offers.ts";
 import { deliverPushNotification } from "./push-delivery.ts";
+import { distanceKm } from "./geo.ts";
 import {
+  agentAcceptsProduct,
   buildOfferPreview,
   rankAgentsInCounty,
   rankFallbackAgents,
+  resolveAgentPoint,
   resolveLeadPoint,
   type AgentCandidate,
   type LocationRef,
@@ -102,7 +105,7 @@ async function loadEligibleAgents(
     return {
       agent_id: a.id,
       town: a.town,
-      lead_dispatch_scope: a.lead_dispatch_scope ?? "both",
+      lead_dispatch_scope: a.lead_dispatch_scope ?? "none",
       is_available: s?.is_available ?? false,
       county: s?.county ?? null,
       last_seen_at: (s?.last_seen_at as string | null) ?? null,
@@ -112,7 +115,11 @@ async function loadEligibleAgents(
   });
 }
 
-/** Agents already offered this lead (any terminal offer status) — skip on re-dispatch. */
+/**
+ * Agents who actively declined this lead — skip on re-dispatch.
+ * Expired / superseded / offered rows are NOT excluded so agents
+ * remain eligible after a timeout or a superseded round.
+ */
 async function loadExcludedAgentIds(
   service: SupabaseClient,
   leadId: string,
@@ -120,7 +127,8 @@ async function loadExcludedAgentIds(
   const { data } = await service
     .from("lead_offers")
     .select("agent_id")
-    .eq("lead_id", leadId);
+    .eq("lead_id", leadId)
+    .in("status", ["declined"]);
 
   return new Set((data ?? []).map((r) => r.agent_id as string));
 }
@@ -207,12 +215,41 @@ export async function dispatchLead(
 
   let next: RankedAgent | null = null;
   const previewCounty = county;
+  let offeredAsPreferred = false;
 
   const maxOpenLeads = config.max_open_leads_enabled
     ? config.max_open_leads_per_agent
     : null;
 
-  if (county && resolved) {
+  // Callback reminder: preferred agent first, then county → fallback → admin.
+  const preferredId = lead.preferred_agent_id as string | null;
+  if (preferredId && !excluded.has(preferredId)) {
+    const preferred = agents.find((a) => a.agent_id === preferredId);
+    if (
+      preferred &&
+      preferred.is_available &&
+      agentAcceptsProduct(
+        preferred.lead_dispatch_scope,
+        lead.product as "airtel" | "safaricom",
+      )
+    ) {
+      const open = openCounts.get(preferredId) ?? 0;
+      if (maxOpenLeads == null || open < maxOpenLeads) {
+        const agentPoint = resolveAgentPoint(preferred.town, locationRefs);
+        const leadPoint = resolved?.point ?? null;
+        next = {
+          ...preferred,
+          distance_km:
+            agentPoint && leadPoint
+              ? distanceKm(leadPoint, agentPoint)
+              : 99999,
+        };
+        offeredAsPreferred = true;
+      }
+    }
+  }
+
+  if (!next && county && resolved) {
     if (lead.county !== county) {
       await service.from("inbound_leads").update({ county }).eq("id", leadId);
     }
@@ -285,6 +322,7 @@ export async function dispatchLead(
     Number.isFinite(next.distance_km) && next.distance_km < 99999
       ? next.distance_km
       : null,
+    { isCallbackReminder: offeredAsPreferred },
   );
 
   const { data: priorOffers } = await service
@@ -303,6 +341,10 @@ export async function dispatchLead(
     .eq("lead_id", leadId)
     .eq("status", "offered");
 
+  const offerMeta: Record<string, unknown> = {};
+  if (next.is_fallback_agent) offerMeta.offered_as = "fallback";
+  if (offeredAsPreferred) offerMeta.offered_as = "callback_reminder";
+
   const { data: offer, error: offerError } = await service
     .from("lead_offers")
     .insert({
@@ -316,7 +358,7 @@ export async function dispatchLead(
           : null,
       preview_payload: preview,
       expires_at: expiresAt,
-      metadata: next.is_fallback_agent ? { offered_as: "fallback" } : {},
+      metadata: offerMeta,
     })
     .select("id")
     .single();

@@ -12,6 +12,7 @@ export type LeadOfferPreview = {
   roughArea?: string | null;
   packageLabel?: string | null;
   distanceKm?: number | null;
+  isCallbackReminder?: boolean;
 };
 
 export type LeadOfferNotificationCopy = {
@@ -92,11 +93,14 @@ export function formatSingleLeadOfferCopy(
   const brand = capitalizeBrand(product);
   const location = formatLeadLocation(preview);
   const pkg = humanizePackageLabel(preview.packageLabel);
+  const isReminder = Boolean(preview.isCallbackReminder);
 
   return {
     title: location,
-    subtitle: `${brand} · New lead`,
-    message: pkg,
+    subtitle: isReminder
+      ? `${brand} · Callback reminder`
+      : `${brand} · New lead`,
+    message: isReminder ? `Call back · ${pkg}` : pkg,
     accentColor: providerAccentColor(product),
     product,
     leadCount: 1,

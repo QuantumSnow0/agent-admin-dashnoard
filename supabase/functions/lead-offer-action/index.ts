@@ -129,6 +129,13 @@ Deno.serve(async (req) => {
         return jsonResponse({ error: "Failed to decline offer" }, 500);
       }
 
+      // Preferred reminder agent declined → fall through to county/fallback.
+      await service
+        .from("inbound_leads")
+        .update({ preferred_agent_id: null })
+        .eq("id", offer.lead_id)
+        .eq("preferred_agent_id", user.id);
+
       let dispatchResult;
       try {
         dispatchResult = await dispatchLead(service, offer.lead_id, {
@@ -171,6 +178,8 @@ Deno.serve(async (req) => {
         status: "assigned",
         assigned_agent_id: user.id,
         accepted_at: now.toISOString(),
+        preferred_agent_id: null,
+        callback_at: null,
       })
       .eq("id", offer.lead_id)
       .select("*")

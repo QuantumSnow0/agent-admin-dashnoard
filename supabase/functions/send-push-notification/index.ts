@@ -130,6 +130,20 @@ serve(async (req) => {
               notificationId,
               relatedId: notification.related_id,
               metadata: notification.metadata || {},
+              actionUrl:
+                typeof (notification.metadata as Record<string, unknown> | null)
+                  ?.actionUrl === "string"
+                  ? String(
+                      (notification.metadata as Record<string, unknown>)
+                        .actionUrl,
+                    )
+                  : typeof (notification.metadata as Record<string, unknown> | null)
+                        ?.url === "string"
+                    ? String(
+                        (notification.metadata as Record<string, unknown>).url,
+                      )
+                    : undefined,
+              message: notification.message,
             },
             badge: 1,
             priority: "high",

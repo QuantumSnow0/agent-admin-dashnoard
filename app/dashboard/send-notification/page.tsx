@@ -1,13 +1,15 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { Bell } from "lucide-react";
-import { SendNotificationForm } from "@/components/notifications/send-notification-form";
+import { SendNotificationClient } from "@/components/notifications/send-notification-client";
 
 interface SendNotificationPageProps {
   searchParams: Promise<{ agentId?: string }>;
 }
 
-export default async function SendNotificationPage({ searchParams }: SendNotificationPageProps) {
+export default async function SendNotificationPage({
+  searchParams,
+}: SendNotificationPageProps) {
   const supabase = await createClient();
   const params = await searchParams;
   const initialAgentId = params.agentId ?? null;
@@ -45,12 +47,15 @@ export default async function SendNotificationPage({ searchParams }: SendNotific
       </div>
 
       <p className="text-sm text-gray-600 max-w-xl">
-        Send a custom notification to one agent, multiple agents, or all agents. They will see it in the app and may receive a push notification if enabled.
+        Send a custom notification to one agent, multiple agents, or all agents.
+        Meetings and urgent items stay on Home until agents dismiss them, they
+        expire, or you clear them below.
       </p>
 
-      <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-6 max-w-2xl">
-        <SendNotificationForm agents={agents ?? []} initialAgentId={initialAgentId} />
-      </div>
+      <SendNotificationClient
+        agents={agents ?? []}
+        initialAgentId={initialAgentId}
+      />
     </div>
   );
 }

@@ -37,6 +37,7 @@ export const LEAD_STATUSES = [
   "admin_queue",
   "lost",
   "expired",
+  "deferred",
 ] as const;
 
 export const LEAD_DISPATCH_SCOPES = [

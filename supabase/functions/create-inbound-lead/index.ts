@@ -100,6 +100,7 @@ Deno.serve(async (req) => {
       "kyc_completed",
       "needs_reassignment",
       "admin_queue",
+      "deferred",
     ];
     const { data: existing } = await service
       .from("inbound_leads")

@@ -10,6 +10,7 @@ export const LEAD_QUEUE_STATUSES = [
   "pending_dispatch",
   "offered",
   "needs_reassignment",
+  "deferred",
 ] as const;
 
 export const LEAD_ACTIVE_STATUSES = [
@@ -41,6 +42,8 @@ export type InboundLeadRecord = {
   plan_group: string | null;
   visit_date: string | null;
   visit_time: string | null;
+  callback_at: string | null;
+  preferred_agent_id: string | null;
   assigned_agent_id: string | null;
   accepted_at: string | null;
   call_initiated_at: string | null;
@@ -98,6 +101,8 @@ const INBOUND_LEAD_SELECT = `
   plan_group,
   visit_date,
   visit_time,
+  callback_at,
+  preferred_agent_id,
   assigned_agent_id,
   accepted_at,
   call_initiated_at,
@@ -120,6 +125,8 @@ const INBOUND_LEAD_SELECT = `
 `;
 
 export function formatLeadStatusLabel(status: string): string {
+  if (status === "deferred") return "Callback reminder";
+  if (status === "pending_install") return "Pending review";
   return status
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))

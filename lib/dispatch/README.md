@@ -51,9 +51,12 @@ cd admin-dashboard
 supabase link --project-ref olaounggwgxpbenmuvnl
 supabase functions deploy create-inbound-lead
 supabase functions deploy dispatch-lead
+supabase functions deploy dispatch-sweep
 supabase functions deploy lead-offer-action
 supabase functions deploy lead-outcome
 ```
+
+`dispatch-sweep` expires timed-out offers every ~2 minutes via `pg_cron` (migration `20260729150000_dispatch_offer_sweep_cron.sql`). Requires vault secret `service_role_key` (or schedule the HTTP POST yourself).
 
 - **Source code lives in:** `admin-dashboard/supabase/functions/`  
 - **Called by:** websites (API key) + agent app (JWT) → same agent hub URLs
