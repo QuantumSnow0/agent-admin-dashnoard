@@ -47,9 +47,10 @@ export default async function SendNotificationPage({
       </div>
 
       <p className="text-sm text-gray-600 max-w-xl">
-        Send a custom notification to one agent, multiple agents, or all agents.
-        Meetings and urgent items stay on Home until agents dismiss them, they
-        expire, or you clear them below.
+        Send a push notification or SMS to one agent, multiple agents, or all
+        agents. Meetings and urgent items stay on Home until agents dismiss
+        them, they expire, or you clear them below. SMS uses each agent&apos;s
+        Airtel / Safaricom phone on file.
       </p>
 
       <SendNotificationClient

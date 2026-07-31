@@ -72,3 +72,9 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/send-push-notification/deno.json"
 entrypoint = "./functions/send-push-notification/index.ts"
+
+[functions.admin-send-sms]
+enabled = true
+verify_jwt = false
+import_map = "./functions/admin-send-sms/deno.json"
+entrypoint = "./functions/admin-send-sms/index.ts"

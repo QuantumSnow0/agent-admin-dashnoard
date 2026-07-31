@@ -9,7 +9,7 @@ import { Bell, Loader2, Trash2, Upload } from "lucide-react";
 import { triggerAdminNotificationPush } from "@/lib/notifications/trigger-push";
 
 type TargetKind = "one" | "multiple" | "all";
-type AnnouncementKind = "announcement" | "meeting" | "urgent";
+type AnnouncementKind = "announcement" | "meeting" | "urgent" | "sms";
 
 type AgentOption = {
   id: string;
@@ -80,6 +80,11 @@ const KIND_OPTIONS: { value: AnnouncementKind; label: string; hint: string }[] =
     label: "Urgent",
     hint: "Home spotlight, stronger emphasis",
   },
+  {
+    value: "sms",
+    label: "SMS",
+    hint: "Text message via Onfon (phone on profile)",
+  },
 ];
 
 export function SendNotificationForm({
@@ -97,6 +102,9 @@ export function SendNotificationForm({
   }, [initialAgentId, agents]);
   const [selectedMultiple, setSelectedMultiple] = useState<Set<string>>(new Set());
   const [kind, setKind] = useState<AnnouncementKind>("announcement");
+  const [smsPhoneTarget, setSmsPhoneTarget] = useState<
+    "airtel" | "safaricom" | "both"
+  >("airtel");
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
   const [actionUrl, setActionUrl] = useState("");
@@ -109,7 +117,12 @@ export function SendNotificationForm({
   const [logoUrl, setLogoUrl] = useState("");
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [sending, setSending] = useState(false);
-  const [result, setResult] = useState<{ ok: boolean; count: number; error?: string } | null>(null);
+  const [result, setResult] = useState<{
+    ok: boolean;
+    count: number;
+    error?: string;
+    channel?: "sms" | "push";
+  } | null>(null);
 
   const toggleMultiple = (id: string) => {
     setSelectedMultiple((prev) => {
@@ -174,12 +187,97 @@ export function SendNotificationForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const ids = getRecipientIds();
-    if (!title.trim() || !message.trim()) {
-      setResult({ ok: false, count: 0, error: "Title and message are required." });
-      return;
-    }
     if (ids.length === 0) {
       setResult({ ok: false, count: 0, error: "Select at least one agent." });
+      return;
+    }
+
+    if (kind === "sms") {
+      if (!message.trim()) {
+        setResult({ ok: false, count: 0, error: "SMS message is required." });
+        return;
+      }
+      if (message.trim().length > 640) {
+        setResult({
+          ok: false,
+          count: 0,
+          error: "SMS message is too long (max 640 characters).",
+        });
+        return;
+      }
+
+      setSending(true);
+      setResult(null);
+      try {
+        const res = await fetch("/api/admin/notifications/sms", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentIds: ids,
+            message: message.trim(),
+            title: title.trim() || "SMS from WAM Apps",
+            recordInApp: true,
+            phoneTarget: smsPhoneTarget,
+          }),
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          ok?: boolean;
+          sent?: number;
+          skipped?: number;
+          failed?: number;
+          error?: string;
+        };
+
+        if (!res.ok && !(data.sent && data.sent > 0)) {
+          setResult({
+            ok: false,
+            count: 0,
+            error: data.error || `SMS failed (${res.status})`,
+          });
+          return;
+        }
+
+        const parts = [
+          `SMS sent to ${data.sent ?? 0}`,
+          data.skipped ? `${data.skipped} skipped (no phone)` : null,
+          data.failed ? `${data.failed} failed` : null,
+        ].filter(Boolean);
+
+        setResult({
+          ok: Boolean(data.ok) || (data.sent ?? 0) > 0,
+          count: data.sent ?? 0,
+          channel: "sms",
+          error:
+            data.error && (data.sent ?? 0) > 0
+              ? `${parts.join(" · ")}. ${data.error}`
+              : data.error && (data.sent ?? 0) === 0
+                ? data.error
+                : (data.skipped ?? 0) > 0 || (data.failed ?? 0) > 0
+                  ? parts.slice(1).join(" · ") || undefined
+                  : undefined,
+        });
+
+        if ((data.sent ?? 0) > 0) {
+          setTitle("");
+          setMessage("");
+          setSelectedOne("");
+          setSelectedMultiple(new Set());
+          onSent?.();
+        }
+      } catch (err) {
+        setResult({
+          ok: false,
+          count: 0,
+          error: err instanceof Error ? err.message : "Failed to send SMS.",
+        });
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
+    if (!title.trim() || !message.trim()) {
+      setResult({ ok: false, count: 0, error: "Title and message are required." });
       return;
     }
 
@@ -392,13 +490,17 @@ export function SendNotificationForm({
 
       {targetKind === "all" && (
         <p className="text-sm text-gray-600 rounded-md bg-gray-50 px-3 py-2">
-          All {agents.length} agents will receive this notification.
+          All {agents.length} agents will receive this{" "}
+          {kind === "sms" ? "SMS" : "notification"}.
+          {kind === "sms"
+            ? " Agents missing the selected phone type are skipped."
+            : ""}
         </p>
       )}
 
       <div className="space-y-2">
         <Label className="text-sm font-semibold text-gray-700">Type</Label>
-        <div className="grid gap-2 sm:grid-cols-3">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           {KIND_OPTIONS.map((option) => (
             <label
               key={option.value}
@@ -423,28 +525,91 @@ export function SendNotificationForm({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="title" className="text-sm font-semibold text-gray-700">Title</Label>
+        <Label htmlFor="title" className="text-sm font-semibold text-gray-700">
+          {kind === "sms" ? "Label (optional)" : "Title"}
+        </Label>
         <input
           id="title"
           type="text"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder={kind === "meeting" ? "e.g. Weekly agent briefing" : "e.g. System maintenance"}
+          placeholder={
+            kind === "sms"
+              ? "Shown in-app history only (not in the SMS)"
+              : kind === "meeting"
+                ? "e.g. Weekly agent briefing"
+                : "e.g. System maintenance"
+          }
           maxLength={200}
           className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
         />
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="message" className="text-sm font-semibold text-gray-700">Message</Label>
+        <Label htmlFor="message" className="text-sm font-semibold text-gray-700">
+          {kind === "sms" ? "SMS text" : "Message"}
+        </Label>
         <textarea
           id="message"
           value={message}
           onChange={(e) => setMessage(e.target.value)}
-          placeholder="Write your notification message…"
+          placeholder={
+            kind === "sms"
+              ? "Keep it short — this is the exact text sent to their phone…"
+              : "Write your notification message…"
+          }
           rows={4}
+          maxLength={kind === "sms" ? 640 : undefined}
           className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-y min-h-[100px]"
         />
+        {kind === "sms" ? (
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold text-gray-700">
+              Send to number
+            </Label>
+            <div className="flex flex-wrap gap-2">
+              {(
+                [
+                  { value: "airtel", label: "Airtel" },
+                  { value: "safaricom", label: "Safaricom" },
+                  { value: "both", label: "Both" },
+                ] as const
+              ).map((opt) => (
+                <label
+                  key={opt.value}
+                  className={`cursor-pointer rounded-md border px-3 py-2 text-sm ${
+                    smsPhoneTarget === opt.value
+                      ? "border-indigo-500 bg-indigo-50 font-medium text-indigo-900"
+                      : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="sms-phone-target"
+                    className="sr-only"
+                    checked={smsPhoneTarget === opt.value}
+                    onChange={() => setSmsPhoneTarget(opt.value)}
+                  />
+                  {opt.label}
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-gray-500">
+              {smsPhoneTarget === "both"
+                ? "Sends a separate SMS to each valid number on the agent’s profile (Airtel and Safaricom)."
+                : smsPhoneTarget === "safaricom"
+                  ? "Only Safaricom numbers. Agents without one are skipped."
+                  : "Only Airtel numbers. Agents without one are skipped."}
+            </p>
+          </div>
+        ) : null}
+
+        {kind === "sms" ? (
+          <p className="text-xs text-gray-500">
+            {message.length}/640 characters · ~{Math.max(1, Math.ceil(Math.max(message.length, 1) / 160))}{" "}
+            SMS segment{Math.ceil(Math.max(message.length, 1) / 160) === 1 ? "" : "s"}
+          </p>
+        ) : null}
       </div>
 
       {(kind === "meeting" || kind === "urgent") && (
@@ -597,75 +762,79 @@ export function SendNotificationForm({
         </div>
       )}
 
-      <div className="space-y-2">
-        <Label htmlFor="action-url" className="text-sm font-semibold text-gray-700">
-          Link (optional)
-        </Label>
-        <input
-          id="action-url"
-          type="url"
-          value={actionUrl}
-          onChange={(e) => setActionUrl(e.target.value)}
-          placeholder="https://teams.microsoft.com/... or https://wa.me/2547..."
-          className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-        />
-        <p className="text-xs text-gray-500">
-          Agents can open this from the push, Notifications tab, and home spotlight button.
-        </p>
-      </div>
-
-      <div className="space-y-2">
-        <Label className="text-sm font-semibold text-gray-700">
-          Logo (optional)
-        </Label>
-        <p className="text-xs text-gray-500">
-          Upload a Teams / WhatsApp / custom logo for the home card watermark. PNG or WebP under 512 KB works best.
-        </p>
-        <div className="flex flex-wrap items-center gap-3">
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
-            {uploadingLogo ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Upload className="h-4 w-4" />
-            )}
-            {uploadingLogo ? "Uploading…" : "Upload logo"}
+      {kind !== "sms" ? (
+        <>
+          <div className="space-y-2">
+            <Label htmlFor="action-url" className="text-sm font-semibold text-gray-700">
+              Link (optional)
+            </Label>
             <input
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              className="sr-only"
-              disabled={uploadingLogo}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) void uploadLogo(file);
-                e.target.value = "";
-              }}
+              id="action-url"
+              type="url"
+              value={actionUrl}
+              onChange={(e) => setActionUrl(e.target.value)}
+              placeholder="https://teams.microsoft.com/... or https://wa.me/2547..."
+              className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
             />
-          </label>
-          {logoUrl ? (
-            <button
-              type="button"
-              onClick={() => setLogoUrl("")}
-              className="inline-flex items-center gap-1 text-xs font-medium text-red-600 hover:text-red-700"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              Remove
-            </button>
-          ) : null}
-        </div>
-        {logoUrl ? (
-          <div className="mt-2 flex items-center gap-3 rounded-md border border-gray-200 bg-gray-50 p-3">
-            <Image
-              src={logoUrl}
-              alt="Logo preview"
-              width={56}
-              height={56}
-              className="h-14 w-14 rounded-md object-contain bg-white"
-              unoptimized
-            />
-            <p className="text-xs text-gray-500 break-all">{logoUrl}</p>
+            <p className="text-xs text-gray-500">
+              Agents can open this from the push, Notifications tab, and home spotlight button.
+            </p>
           </div>
-        ) : null}
-      </div>
+
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold text-gray-700">
+              Logo (optional)
+            </Label>
+            <p className="text-xs text-gray-500">
+              Upload a Teams / WhatsApp / custom logo for the home card watermark. PNG or WebP under 512 KB works best.
+            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                {uploadingLogo ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Upload className="h-4 w-4" />
+                )}
+                {uploadingLogo ? "Uploading…" : "Upload logo"}
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="sr-only"
+                  disabled={uploadingLogo}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) void uploadLogo(file);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+              {logoUrl ? (
+                <button
+                  type="button"
+                  onClick={() => setLogoUrl("")}
+                  className="inline-flex items-center gap-1 text-xs font-medium text-red-600 hover:text-red-700"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Remove
+                </button>
+              ) : null}
+            </div>
+            {logoUrl ? (
+              <div className="mt-2 flex items-center gap-3 rounded-md border border-gray-200 bg-gray-50 p-3">
+                <Image
+                  src={logoUrl}
+                  alt="Logo preview"
+                  width={56}
+                  height={56}
+                  className="h-14 w-14 rounded-md object-contain bg-white"
+                  unoptimized
+                />
+                <p className="text-xs text-gray-500 break-all">{logoUrl}</p>
+              </div>
+            ) : null}
+          </div>
+        </>
+      ) : null}
 
       {result && (
         <div
@@ -678,9 +847,13 @@ export function SendNotificationForm({
           }`}
         >
           {result.ok
-            ? `Notification saved for ${result.count} agent${result.count === 1 ? "" : "s"}.${
-                result.error ? ` ${result.error}` : " Push delivered."
-              }`
+            ? result.channel === "sms"
+              ? `SMS delivered to ${result.count} agent${result.count === 1 ? "" : "s"}.${
+                  result.error ? ` ${result.error}` : ""
+                }`
+              : `Notification saved for ${result.count} agent${result.count === 1 ? "" : "s"}.${
+                  result.error ? ` ${result.error}` : " Push delivered."
+                }`
             : result.error}
         </div>
       )}
@@ -694,7 +867,7 @@ export function SendNotificationForm({
         ) : (
           <>
             <Bell className="h-4 w-4" />
-            Send notification
+            {kind === "sms" ? "Send SMS" : "Send notification"}
           </>
         )}
       </Button>
