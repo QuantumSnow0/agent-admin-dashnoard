@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/client";
+import { triggerAdminNotificationPush } from "@/lib/notifications/trigger-push";
 import { Loader2, Pencil, RefreshCw, Send, Trash2, Users } from "lucide-react";
 
 type AgentOption = {
@@ -462,6 +463,7 @@ export function ActiveHomeSpotlightsPanel({
       let updatedOnHome = 0;
       let reopened = 0;
       let inserted = 0;
+      const pushIds: string[] = [];
 
       const toInsert: string[] = [];
 
@@ -485,6 +487,7 @@ export function ActiveHomeSpotlightsPanel({
             .eq("id", existing.notificationId);
           if (updateError) throw updateError;
 
+          pushIds.push(existing.notificationId);
           if (existing.dismissed) reopened += 1;
           else updatedOnHome += 1;
         }),
@@ -498,28 +501,34 @@ export function ActiveHomeSpotlightsPanel({
           message: draft.message.trim(),
           metadata,
         }));
-        const { error: insertError } = await supabase
+        const { data: insertedRows, error: insertError } = await supabase
           .from("notifications")
-          .insert(insertRows);
+          .insert(insertRows)
+          .select("id");
         if (insertError) throw insertError;
         inserted = toInsert.length;
+        for (const row of insertedRows ?? []) {
+          if (row.id) pushIds.push(row.id);
+        }
       }
+
+      const push = await triggerAdminNotificationPush(pushIds);
 
       const parts: string[] = [];
       if (updatedOnHome > 0) {
-        parts.push(
-          `updated ${updatedOnHome} on home`,
-        );
+        parts.push(`updated ${updatedOnHome} on home`);
       }
       if (reopened > 0) {
-        parts.push(
-          `re-opened ${reopened} dismissed`,
-        );
+        parts.push(`re-opened ${reopened} dismissed`);
       }
       if (inserted > 0) {
-        parts.push(
-          `sent to ${inserted} new`,
-        );
+        parts.push(`sent to ${inserted} new`);
+      }
+      if (push.sent > 0) {
+        parts.push(`pushed ${push.sent}`);
+      }
+      if (!push.ok && push.error) {
+        setError(`Saved, but push failed: ${push.error}`);
       }
       setMessage(parts.join(" · ") || "Saved.");
       await load();

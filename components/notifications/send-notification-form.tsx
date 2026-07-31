@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/client";
 import { Bell, Loader2, Trash2, Upload } from "lucide-react";
+import { triggerAdminNotificationPush } from "@/lib/notifications/trigger-push";
 
 type TargetKind = "one" | "multiple" | "all";
 type AnnouncementKind = "announcement" | "meeting" | "urgent";
@@ -254,7 +255,10 @@ export function SendNotificationForm({
         },
       }));
 
-      const { data, error } = await supabase.from("notifications").insert(rows).select("id");
+      const { data, error } = await supabase
+        .from("notifications")
+        .insert(rows)
+        .select("id");
 
       if (error) {
         setResult({ ok: false, count: 0, error: error.message });
@@ -262,7 +266,21 @@ export function SendNotificationForm({
         return;
       }
 
-      setResult({ ok: true, count: data?.length ?? ids.length });
+      const insertedIds = (data ?? []).map((r) => r.id).filter(Boolean);
+      const push = await triggerAdminNotificationPush(insertedIds);
+
+      if (!push.ok) {
+        setResult({
+          ok: true,
+          count: insertedIds.length || ids.length,
+          error: `Saved, but push failed: ${push.error ?? "unknown"}. Agents still see it in-app.`,
+        });
+      } else {
+        setResult({
+          ok: true,
+          count: insertedIds.length || ids.length,
+        });
+      }
       setTitle("");
       setMessage("");
       setActionUrl("");
@@ -652,11 +670,17 @@ export function SendNotificationForm({
       {result && (
         <div
           className={`rounded-md px-3 py-2 text-sm ${
-            result.ok ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"
+            result.ok && !result.error
+              ? "bg-green-50 text-green-800"
+              : result.ok
+                ? "bg-amber-50 text-amber-900"
+                : "bg-red-50 text-red-800"
           }`}
         >
           {result.ok
-            ? `Notification sent to ${result.count} agent${result.count === 1 ? "" : "s"}.`
+            ? `Notification saved for ${result.count} agent${result.count === 1 ? "" : "s"}.${
+                result.error ? ` ${result.error}` : " Push delivered."
+              }`
             : result.error}
         </div>
       )}

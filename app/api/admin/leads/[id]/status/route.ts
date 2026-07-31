@@ -3,6 +3,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { requireAdminApi } from "@/lib/admin-api";
 import { fetchAdminInboundLeadById } from "@/lib/admin-leads";
 import { LEAD_INSTALL_COMMISSION_KES } from "@/lib/dispatch/constants";
+import { deliverPushNotification } from "@/lib/dispatch/push-delivery";
 
 export const dynamic = "force-dynamic";
 
@@ -129,19 +130,32 @@ export async function PATCH(
       const amount =
         Number(update.commission_earned_ksh) || LEAD_INSTALL_COMMISSION_KES;
       try {
-        await service.from("notifications").insert({
-          agent_id: lead.assigned_agent_id,
-          related_id: leadId,
-          title: "Installation confirmed",
-          message: `Admin confirmed install for ${lead.customer_name}. Commission KSh ${amount} will be paid with your next payout.`,
-          type: "LEAD_INSTALLED",
-          is_read: false,
-          metadata: {
-            leadId,
-            commissionKes: amount,
-            product: lead.product,
-          },
-        });
+        const { data: notification, error: notifyError } = await service
+          .from("notifications")
+          .insert({
+            agent_id: lead.assigned_agent_id,
+            related_id: leadId,
+            title: "Installation confirmed",
+            message: `Admin confirmed install for ${lead.customer_name}. Commission KSh ${amount} will be paid with your next payout.`,
+            type: "LEAD_INSTALLED",
+            is_read: false,
+            metadata: {
+              leadId,
+              commissionKes: amount,
+              product: lead.product,
+            },
+          })
+          .select("id, agent_id, type, title, message, related_id, metadata")
+          .single();
+
+        if (notifyError) {
+          console.error("[admin/leads status] notify insert:", notifyError);
+        } else if (notification) {
+          const push = await deliverPushNotification(notification);
+          if (!push.ok) {
+            console.error("[admin/leads status] push failed:", push.error);
+          }
+        }
       } catch (notifyErr) {
         console.error("[admin/leads status] notify:", notifyErr);
       }
