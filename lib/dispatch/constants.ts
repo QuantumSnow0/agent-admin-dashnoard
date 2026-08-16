@@ -12,6 +12,10 @@ export const DISPATCH_DEFAULTS = {
   maxOpenLeadsEnabled: true,
   /** Agent is "online" when last_seen_at is within this window (app heartbeat). */
   onlinePresenceMinutes: 5,
+  /** Global default working-pin radius when an agent has no override. */
+  defaultServiceRadiusKm: 8,
+  minServiceRadiusKm: 0.5,
+  maxServiceRadiusKm: 50,
 } as const;
 
 export const LEAD_SOURCES = [

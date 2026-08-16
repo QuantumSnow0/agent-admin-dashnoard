@@ -2,6 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { redirect } from "next/navigation";
 import { LeadsView } from "@/components/leads/leads-view";
+import { DefaultRadiusControl } from "@/components/dispatch/default-radius-control";
+import { DISPATCH_DEFAULTS } from "@/lib/dispatch/constants";
 import {
   fetchAdminInboundLeads,
   fetchLeadTabCounts,
@@ -48,6 +50,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
     closed: 0,
     all: 0,
   };
+  let defaultRadiusKm: number = DISPATCH_DEFAULTS.defaultServiceRadiusKm;
   let serviceConfigured = Boolean(
     process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY,
   );
@@ -55,13 +58,20 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
   if (serviceConfigured) {
     try {
       const service = createServiceClient();
-      const [leadsResult, tabCounts] = await Promise.all([
+      const [leadsResult, tabCounts, configRes] = await Promise.all([
         fetchAdminInboundLeads(service, { statusFilter, searchQuery }),
         fetchLeadTabCounts(service),
+        service
+          .from("dispatch_config")
+          .select("default_service_radius_km")
+          .limit(1)
+          .maybeSingle(),
       ]);
       leads = leadsResult.leads;
       error = leadsResult.error;
       counts = tabCounts;
+      const radius = Number(configRes.data?.default_service_radius_km);
+      if (Number.isFinite(radius) && radius > 0) defaultRadiusKm = radius;
     } catch (err) {
       error = err instanceof Error ? err.message : "Failed to load leads";
       serviceConfigured = false;
@@ -84,6 +94,8 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
           (same workflow as Registrations).
         </p>
       </div>
+
+      <DefaultRadiusControl initialRadiusKm={defaultRadiusKm} />
 
       <LeadsView
         leads={leads}

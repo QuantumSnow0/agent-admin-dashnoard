@@ -21,6 +21,11 @@ import {
   LEAD_ACTIVE_STATUSES,
   LEAD_QUEUE_STATUSES,
 } from "@/lib/admin-leads";
+import {
+  googlePlaceFromLeadMetadata,
+  parseDispatchMatchSnapshot,
+} from "@/lib/dispatch/matching";
+import { formatDistanceKm } from "@/lib/dispatch/geo";
 import { getLeadReleaseInfo } from "@/lib/lead-release";
 import { getLeadInstallCommissionKes } from "@/lib/lead-install-commission";
 import { LeadInstallStatusActions } from "@/components/leads/lead-install-status-actions";
@@ -65,7 +70,12 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 function matchesAgentSearch(agent: AssignableAgentOption, query: string) {
   const q = query.trim().toLowerCase();
   if (!q) return true;
-  const haystack = [agent.name, agent.town, agent.county]
+  const haystack = [
+    agent.name,
+    agent.town,
+    agent.county,
+    agent.working_place_name,
+  ]
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
@@ -224,6 +234,8 @@ export function LeadDetailPanel({
 
   if (!lead) return null;
 
+  const customerPlace = googlePlaceFromLeadMetadata(lead.metadata);
+  const matchSnapshot = parseDispatchMatchSnapshot(lead.metadata);
   const releaseInfo = getLeadReleaseInfo(lead);
   const showRelease =
     Boolean(releaseInfo.reason) &&
@@ -361,6 +373,30 @@ export function LeadDetailPanel({
             <Field label="County" value={lead.county} />
             <Field label="Area / landmark" value={lead.installation_area} />
             <Field label="Delivery landmark" value={lead.delivery_landmark} />
+            {customerPlace ? (
+              <>
+                <Field label="Customer pin" value={customerPlace.name} />
+                <Field label="Pin address" value={customerPlace.formattedAddress} />
+                <div className="flex flex-col gap-0.5 border-b border-gray-100 py-2.5 sm:flex-row sm:gap-4">
+                  <dt className="w-full shrink-0 text-xs font-semibold uppercase tracking-wide text-gray-500 sm:w-36">
+                    Map
+                  </dt>
+                  <dd className="min-w-0 flex-1">
+                    <a
+                      href={`https://www.google.com/maps/search/?api=1&query=${customerPlace.lat},${customerPlace.lng}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-sm font-medium text-indigo-600 hover:text-indigo-800"
+                    >
+                      Open pin
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  </dd>
+                </div>
+              </>
+            ) : (
+              <Field label="Customer pin" value="Not captured" />
+            )}
             <Field
               label="Plan"
               value={lead.plan_label ?? lead.preferred_package ?? undefined}
@@ -372,6 +408,63 @@ export function LeadDetailPanel({
             ) : null}
 
             <SectionTitle>Dispatch</SectionTitle>
+            {matchSnapshot ? (
+              <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+                <p className="font-semibold">
+                  {matchSnapshot.reason === "missing_customer_pin"
+                    ? "Queued because this lead has no customer pin."
+                    : matchSnapshot.reason === "no_agents_in_range"
+                      ? "Queued because nobody was in range (fallback also empty)."
+                      : `Queued: ${matchSnapshot.reason.replace(/_/g, " ")}.`}
+                </p>
+                <p className="mt-1 text-xs text-amber-800">
+                  Default radius {matchSnapshot.defaultRadiusKm} km
+                  {matchSnapshot.customerPin
+                    ? ` · pin ${matchSnapshot.customerPin.name}`
+                    : ""}
+                </p>
+                {matchSnapshot.nearestInRange.length > 0 ? (
+                  <div className="mt-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide">
+                      In range
+                    </p>
+                    <ul className="mt-1 space-y-0.5 text-xs">
+                      {matchSnapshot.nearestInRange.map((row) => (
+                        <li key={row.agentId}>
+                          {row.name ?? "Agent"} · {formatDistanceKm(row.distanceKm)} (radius {row.radiusKm} km)
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {matchSnapshot.outOfRadius.length > 0 ? (
+                  <div className="mt-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide">
+                      Out of radius
+                    </p>
+                    <ul className="mt-1 space-y-0.5 text-xs">
+                      {matchSnapshot.outOfRadius.map((row) => (
+                        <li key={row.agentId}>
+                          {row.name ?? "Agent"} · {formatDistanceKm(row.distanceKm)} (limit {row.radiusKm} km)
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {matchSnapshot.noPin.length > 0 ? (
+                  <div className="mt-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide">
+                      No working pin
+                    </p>
+                    <ul className="mt-1 space-y-0.5 text-xs">
+                      {matchSnapshot.noPin.map((row) => (
+                        <li key={row.agentId}>{row.name ?? "Agent"}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             <Field label="Assigned agent" value={lead.assigned_agent_name} />
             {lead.assigned_agent_id ? (
               <div className="flex flex-col gap-0.5 border-b border-gray-100 py-2.5 sm:flex-row sm:gap-4">
@@ -554,7 +647,7 @@ export function LeadDetailPanel({
                     <Input
                       value={agentSearch}
                       onChange={(e) => setAgentSearch(e.target.value)}
-                      placeholder="Search agents by name, town, county…"
+                      placeholder="Search agents by name or pin…"
                       className="pl-9"
                     />
                   </div>
@@ -570,11 +663,13 @@ export function LeadDetailPanel({
                       const warning =
                         !agent.scope_match
                           ? "Wrong product scope"
-                          : !agent.county_match
-                            ? "Different county"
-                            : !agent.is_available
-                              ? "Not available for leads"
-                              : null;
+                          : !agent.working_place_name
+                            ? "No working pin"
+                            : !agent.in_radius && agent.distance_km != null
+                              ? `Out of radius (${formatDistanceKm(agent.distance_km)} / ${agent.radius_km} km)`
+                              : !agent.is_available
+                                ? "Not available for leads"
+                                : null;
 
                       return (
                         <button
@@ -594,8 +689,12 @@ export function LeadDetailPanel({
                                 {agent.name ?? "Unnamed agent"}
                               </p>
                               <p className="mt-0.5 text-xs text-gray-500">
-                                {[agent.town, agent.county].filter(Boolean).join(" · ") ||
+                                {agent.working_place_name ||
+                                  [agent.town, agent.county].filter(Boolean).join(" · ") ||
                                   "No location"}
+                                {agent.distance_km != null
+                                  ? ` · ${formatDistanceKm(agent.distance_km)}`
+                                  : ""}
                               </p>
                             </div>
                             {selected ? (

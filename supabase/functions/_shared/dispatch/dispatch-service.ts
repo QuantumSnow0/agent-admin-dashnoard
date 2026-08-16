@@ -9,13 +9,15 @@ import { DISPATCH_DEFAULTS, NOTIFICATION_TYPE_LEAD_OFFER } from "./constants.ts"
 import { formatLeadOfferNotificationCopy } from "./lead-offer-notification-copy.ts";
 import { expireStaleOffers, runDispatchSweep } from "./expire-offers.ts";
 import { deliverPushNotification } from "./push-delivery.ts";
-import { distanceKm } from "./geo.ts";
 import {
   agentAcceptsProduct,
+  buildDispatchMatchSnapshot,
   buildOfferPreview,
-  rankAgentsInCounty,
+  effectiveRadiusKm,
+  googlePlaceFromLeadMetadata,
+  pinDistanceFromPlaces,
+  rankAgentsInRange,
   rankFallbackAgents,
-  resolveAgentPoint,
   resolveLeadPoint,
   type AgentCandidate,
   type LocationRef,
@@ -28,6 +30,7 @@ type DispatchConfig = {
   max_open_leads_per_agent: number;
   max_open_leads_enabled: boolean;
   online_presence_minutes: number;
+  default_service_radius_km: number;
 };
 
 export async function loadDispatchConfig(
@@ -36,11 +39,12 @@ export async function loadDispatchConfig(
   const { data } = await service
     .from("dispatch_config")
     .select(
-      "dispatch_enabled, offer_timeout_minutes, max_open_leads_per_agent, max_open_leads_enabled, online_presence_minutes",
+      "dispatch_enabled, offer_timeout_minutes, max_open_leads_per_agent, max_open_leads_enabled, online_presence_minutes, default_service_radius_km",
     )
     .limit(1)
     .maybeSingle();
 
+  const radius = Number(data?.default_service_radius_km);
   return {
     dispatch_enabled: data?.dispatch_enabled ?? true,
     offer_timeout_minutes:
@@ -51,6 +55,9 @@ export async function loadDispatchConfig(
       data?.max_open_leads_enabled ?? DISPATCH_DEFAULTS.maxOpenLeadsEnabled,
     online_presence_minutes:
       data?.online_presence_minutes ?? DISPATCH_DEFAULTS.onlinePresenceMinutes,
+    default_service_radius_km: Number.isFinite(radius) && radius > 0
+      ? radius
+      : DISPATCH_DEFAULTS.defaultServiceRadiusKm,
   };
 }
 
@@ -83,7 +90,7 @@ async function loadEligibleAgents(
 ): Promise<AgentCandidate[]> {
   const { data: agents, error } = await service
     .from("agents")
-    .select("id, town, lead_dispatch_scope, status, is_fallback_agent, fallback_priority")
+    .select("id, name, town, lead_dispatch_scope, status, is_fallback_agent, fallback_priority, working_place")
     .eq("status", "approved");
 
   if (error) throw error;
@@ -93,7 +100,7 @@ async function loadEligibleAgents(
 
   const { data: settings } = await service
     .from("agent_dispatch_settings")
-    .select("agent_id, is_available, county, last_seen_at")
+    .select("agent_id, is_available, county, last_seen_at, service_radius_km")
     .in("agent_id", ids);
 
   const settingsMap = new Map(
@@ -104,6 +111,7 @@ async function loadEligibleAgents(
     const s = settingsMap.get(a.id);
     return {
       agent_id: a.id,
+      name: a.name ?? null,
       town: a.town,
       lead_dispatch_scope: a.lead_dispatch_scope ?? "none",
       is_available: s?.is_available ?? false,
@@ -111,6 +119,9 @@ async function loadEligibleAgents(
       last_seen_at: (s?.last_seen_at as string | null) ?? null,
       is_fallback_agent: Boolean(a.is_fallback_agent),
       fallback_priority: Number(a.fallback_priority ?? 100),
+      working_place: a.working_place ?? null,
+      service_radius_km:
+        s?.service_radius_km != null ? Number(s.service_radius_km) : null,
     };
   });
 }
@@ -169,8 +180,8 @@ export type DispatchLeadResult =
   | { outcome: "skipped"; reason: string };
 
 /**
- * Offer lead to the nearest eligible agent in county not yet tried.
- * If none remain → admin_queue.
+ * Offer lead to the nearest in-range agent by working pin.
+ * If none remain → fallback agents, then admin_queue.
  */
 export async function dispatchLead(
   service: SupabaseClient,
@@ -201,10 +212,15 @@ export async function dispatchLead(
   }
 
   const locationRefs = await loadLocationRefs(service);
-  const resolved = resolveLeadPoint(lead.installation_town, locationRefs);
-  // Prefer canonical county from location_reference over client-supplied county
-  // (Safaricom forms send town labels like "NAIROBI", not county names).
-  const county = resolved?.county ?? lead.county ?? null;
+  const googlePlace = googlePlaceFromLeadMetadata(lead.metadata);
+  const townResolved = resolveLeadPoint(lead.installation_town ?? "", locationRefs);
+  const county =
+    googlePlace?.county ?? townResolved?.county ?? lead.county ?? null;
+  const leadPoint = googlePlace
+    ? { latitude: googlePlace.lat, longitude: googlePlace.lng }
+    : null;
+  const defaultRadiusKm = config.default_service_radius_km;
+  const product = lead.product as "airtel" | "safaricom";
 
   const agents = await loadEligibleAgents(service);
   const openCounts = await loadOpenLeadCounts(service);
@@ -221,72 +237,80 @@ export async function dispatchLead(
     ? config.max_open_leads_per_agent
     : null;
 
-  // Callback reminder: preferred agent first, then county → fallback → admin.
   const preferredId = lead.preferred_agent_id as string | null;
   if (preferredId && !excluded.has(preferredId)) {
     const preferred = agents.find((a) => a.agent_id === preferredId);
     if (
       preferred &&
       preferred.is_available &&
-      agentAcceptsProduct(
-        preferred.lead_dispatch_scope,
-        lead.product as "airtel" | "safaricom",
-      )
+      agentAcceptsProduct(preferred.lead_dispatch_scope, product)
     ) {
       const open = openCounts.get(preferredId) ?? 0;
       if (maxOpenLeads == null || open < maxOpenLeads) {
-        const agentPoint = resolveAgentPoint(preferred.town, locationRefs);
-        const leadPoint = resolved?.point ?? null;
+        const pinKm = pinDistanceFromPlaces(googlePlace, preferred.working_place);
         next = {
           ...preferred,
-          distance_km:
-            agentPoint && leadPoint
-              ? distanceKm(leadPoint, agentPoint)
-              : 99999,
+          distance_km: pinKm ?? 99999,
+          radius_km: effectiveRadiusKm(preferred, defaultRadiusKm),
         };
         offeredAsPreferred = true;
       }
     }
   }
 
-  if (!next && county && resolved) {
-    if (lead.county !== county) {
+  if (!next && leadPoint) {
+    if (county && lead.county !== county) {
       await service.from("inbound_leads").update({ county }).eq("id", leadId);
     }
 
-    const ranked = rankAgentsInCounty(
-      county,
-      resolved.point,
+    const ranked = rankAgentsInRange(
+      leadPoint,
       agents,
-      locationRefs,
-      lead.product,
+      product,
       openCounts,
       maxOpenLeads,
       config.online_presence_minutes,
+      defaultRadiusKm,
     ).filter((a) => !excluded.has(a.agent_id));
 
     next = ranked[0] ?? null;
   }
 
-  // No county match (or unknown town) → try designated fallback agents one-at-a-time.
   if (!next) {
     const fallbacks = rankFallbackAgents(
-      resolved?.point ?? null,
+      leadPoint,
       agents,
       locationRefs,
-      lead.product,
+      product,
       openCounts,
       maxOpenLeads,
       config.online_presence_minutes,
+      defaultRadiusKm,
     ).filter((a) => !excluded.has(a.agent_id));
 
     next = fallbacks[0] ?? null;
   }
 
   if (!next) {
+    const reason = !leadPoint
+      ? "missing_customer_pin"
+      : "no_agents_in_range";
+    const dispatchMatch = buildDispatchMatchSnapshot({
+      reason,
+      metadata: lead.metadata,
+      leadPoint,
+      agents,
+      product,
+      defaultRadiusKm,
+    });
+    const metadata =
+      lead.metadata && typeof lead.metadata === "object"
+        ? { ...(lead.metadata as Record<string, unknown>), dispatchMatch }
+        : { dispatchMatch };
+
     await service
       .from("inbound_leads")
-      .update({ status: "admin_queue", county: previewCounty })
+      .update({ status: "admin_queue", county: previewCounty, metadata })
       .eq("id", leadId);
 
     await service
@@ -295,13 +319,7 @@ export async function dispatchLead(
       .eq("lead_id", leadId)
       .eq("status", "offered");
 
-    return {
-      outcome: "admin_queue",
-      reason:
-        !county || !resolved
-          ? "unknown_county_or_town"
-          : "no_agents_or_fallback",
-    };
+    return { outcome: "admin_queue", reason };
   }
 
   const expiresAt = new Date(
@@ -311,6 +329,11 @@ export async function dispatchLead(
   const packageLabel =
     lead.plan_label ?? lead.preferred_package ?? null;
 
+  const offerDistance =
+    Number.isFinite(next.distance_km) && next.distance_km < 99999
+      ? next.distance_km
+      : pinDistanceFromPlaces(googlePlace, next.working_place);
+
   const preview = buildOfferPreview(
     lead.product,
     previewCounty,
@@ -319,10 +342,8 @@ export async function dispatchLead(
     lead.delivery_landmark,
     packageLabel,
     lead.created_at,
-    Number.isFinite(next.distance_km) && next.distance_km < 99999
-      ? next.distance_km
-      : null,
-    { isCallbackReminder: offeredAsPreferred },
+    offerDistance,
+    { isCallbackReminder: offeredAsPreferred, googlePlace },
   );
 
   const { data: priorOffers } = await service
@@ -352,10 +373,7 @@ export async function dispatchLead(
       agent_id: next.agent_id,
       status: "offered",
       offer_sequence: offerSequence,
-      distance_km:
-        Number.isFinite(next.distance_km) && next.distance_km < 99999
-          ? next.distance_km
-          : null,
+      distance_km: offerDistance,
       preview_payload: preview,
       expires_at: expiresAt,
       metadata: offerMeta,

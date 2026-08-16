@@ -10,6 +10,9 @@ export const DISPATCH_DEFAULTS = {
   /** When false, auto-dispatch ignores max_open_leads_per_agent. */
   maxOpenLeadsEnabled: true,
   onlinePresenceMinutes: 5,
+  defaultServiceRadiusKm: 8,
+  minServiceRadiusKm: 0.5,
+  maxServiceRadiusKm: 50,
 } as const;
 
 export const ACTIVE_LEAD_STATUSES = [

@@ -1,6 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { DISPATCH_DEFAULTS } from "@/lib/dispatch/constants";
 import {
+  effectiveRadiusKm,
+  googlePlaceFromLeadMetadata,
+  parsePreviewGooglePlace,
+  pinDistanceFromPlaces,
+} from "@/lib/dispatch/matching";
+import {
   LEAD_INSTALL_CLOSED_STATUSES,
   LEAD_INSTALL_REVIEW_STATUSES as INSTALL_PIPELINE_STATUSES,
 } from "@/lib/lead-install-statuses";
@@ -81,6 +87,10 @@ export type AssignableAgentOption = {
   is_available: boolean;
   scope_match: boolean;
   county_match: boolean;
+  working_place_name: string | null;
+  distance_km: number | null;
+  radius_km: number | null;
+  in_radius: boolean;
 };
 
 const INBOUND_LEAD_SELECT = `
@@ -294,25 +304,36 @@ export async function fetchAdminInboundLeadById(
 
 export async function fetchAssignableAgents(
   service: SupabaseClient,
-  lead: Pick<InboundLeadRecord, "product" | "county">,
+  lead: Pick<InboundLeadRecord, "product" | "county" | "metadata">,
 ): Promise<AssignableAgentOption[]> {
   const { data: agents, error } = await service
     .from("agents")
-    .select("id, name, town, status, lead_dispatch_scope")
+    .select("id, name, town, status, lead_dispatch_scope, working_place")
     .eq("status", "approved")
     .order("name", { ascending: true });
 
   if (error || !agents) return [];
 
   const agentIds = agents.map((a) => a.id);
-  const { data: settings } = await service
-    .from("agent_dispatch_settings")
-    .select("agent_id, county, is_available")
-    .in("agent_id", agentIds);
+  const [{ data: settings }, { data: config }] = await Promise.all([
+    service
+      .from("agent_dispatch_settings")
+      .select("agent_id, county, is_available, service_radius_km")
+      .in("agent_id", agentIds),
+    service
+      .from("dispatch_config")
+      .select("default_service_radius_km")
+      .limit(1)
+      .maybeSingle(),
+  ]);
 
   const settingsByAgent = new Map(
     (settings ?? []).map((row) => [row.agent_id, row]),
   );
+  const defaultRadius =
+    Number(config?.default_service_radius_km) ||
+    DISPATCH_DEFAULTS.defaultServiceRadiusKm;
+  const customerPlace = googlePlaceFromLeadMetadata(lead.metadata);
 
   return agents.map((agent) => {
     const dispatch = settingsByAgent.get(agent.id);
@@ -324,6 +345,12 @@ export async function fetchAssignableAgents(
       !lead.county ||
       !dispatch?.county ||
       dispatch.county.toLowerCase() === lead.county.toLowerCase();
+    const working = parsePreviewGooglePlace(agent.working_place);
+    const radiusKm = effectiveRadiusKm(
+      { service_radius_km: dispatch?.service_radius_km ?? null },
+      defaultRadius,
+    );
+    const distanceKm = pinDistanceFromPlaces(customerPlace, agent.working_place);
 
     return {
       id: agent.id,
@@ -334,6 +361,10 @@ export async function fetchAssignableAgents(
       is_available: dispatch?.is_available ?? false,
       scope_match: scopeMatch,
       county_match: countyMatch,
+      working_place_name: working?.name ?? null,
+      distance_km: distanceKm,
+      radius_km: radiusKm,
+      in_radius: distanceKm != null && distanceKm <= radiusKm,
     };
   });
 }

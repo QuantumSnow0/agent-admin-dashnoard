@@ -1,11 +1,6 @@
-/**
- * v1 agent matching: same county, product scope, availability, capacity.
- * Ranks by distance to lead town centroid.
- */
-
+import { DISPATCH_DEFAULTS } from "./constants.ts";
 import {
   distanceKm,
-  normalizeCountyKey,
   normalizeTownKey,
   type GeoPoint,
 } from "./geo.ts";
@@ -20,6 +15,7 @@ export type LocationRef = {
 
 export type AgentCandidate = {
   agent_id: string;
+  name?: string | null;
   county: string | null;
   town: string | null;
   lead_dispatch_scope: string;
@@ -27,6 +23,8 @@ export type AgentCandidate = {
   last_seen_at: string | null;
   is_fallback_agent?: boolean;
   fallback_priority?: number;
+  working_place?: unknown;
+  service_radius_km?: number | null;
 };
 
 /** Agent opened the app recently (heartbeat), not merely "available" toggle. */
@@ -41,9 +39,9 @@ export function isAgentOnline(
 
 export type RankedAgent = AgentCandidate & {
   distance_km: number;
+  radius_km: number;
 };
 
-/** Whether agent's dispatch scope includes this product. */
 export function agentAcceptsProduct(
   scope: string,
   product: "airtel" | "safaricom",
@@ -53,10 +51,28 @@ export function agentAcceptsProduct(
   return scope === product;
 }
 
-/**
- * Build lead geo point from town label + location_reference rows.
- * Falls back to null if town unknown (caller should route to admin_queue).
- */
+export function roundKm(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+export function clampServiceRadiusKm(value: number): number {
+  return Math.min(
+    DISPATCH_DEFAULTS.maxServiceRadiusKm,
+    Math.max(DISPATCH_DEFAULTS.minServiceRadiusKm, value),
+  );
+}
+
+export function effectiveRadiusKm(
+  agent: Pick<AgentCandidate, "service_radius_km">,
+  defaultRadiusKm: number,
+): number {
+  const override = Number(agent.service_radius_km);
+  if (Number.isFinite(override) && override > 0) {
+    return clampServiceRadiusKm(override);
+  }
+  return clampServiceRadiusKm(defaultRadiusKm);
+}
+
 export function resolveLeadPoint(
   installationTown: string,
   locationRefs: LocationRef[],
@@ -81,64 +97,135 @@ export function resolveAgentPoint(
   return { latitude: ref.latitude, longitude: ref.longitude };
 }
 
-/** Rank eligible agents: online first (heartbeat), then offline-but-available, by distance. */
-export function rankAgentsInCounty(
-  leadCounty: string,
+export function resolveAgentPin(workingPlace: unknown): GeoPoint | null {
+  const place = parsePreviewGooglePlace(workingPlace);
+  if (!place) return null;
+  return { latitude: place.lat, longitude: place.lng };
+}
+
+export function resolveCustomerPoint(
+  metadata: unknown,
+  installationTown: string,
+  locationRefs: LocationRef[],
+): { county: string | null; point: GeoPoint; source: "pin" | "town" } | null {
+  const pin = googlePlaceFromLeadMetadata(metadata);
+  if (pin) {
+    return {
+      county: pin.county ?? null,
+      point: { latitude: pin.lat, longitude: pin.lng },
+      source: "pin",
+    };
+  }
+  const town = resolveLeadPoint(installationTown, locationRefs);
+  if (!town) return null;
+  return { county: town.county, point: town.point, source: "town" };
+}
+
+function pinDistanceKm(
+  leadPoint: GeoPoint,
+  workingPlace: unknown,
+): number | null {
+  const agentPoint = resolveAgentPin(workingPlace);
+  if (!agentPoint) return null;
+  return roundKm(distanceKm(leadPoint, agentPoint));
+}
+
+function sortOnlineThenDistance(
+  agents: RankedAgent[],
+  onlinePresenceMinutes: number,
+): RankedAgent[] {
+  const online = agents.filter((a) =>
+    isAgentOnline(a.last_seen_at, onlinePresenceMinutes),
+  );
+  const offline = agents.filter(
+    (a) => !isAgentOnline(a.last_seen_at, onlinePresenceMinutes),
+  );
+  online.sort((a, b) => a.distance_km - b.distance_km);
+  offline.sort((a, b) => a.distance_km - b.distance_km);
+  return [...online, ...offline];
+}
+
+function passesCapacity(
+  agentId: string,
+  openLeadCounts: Map<string, number>,
+  maxOpenLeads: number | null,
+): boolean {
+  if (maxOpenLeads == null) return true;
+  return (openLeadCounts.get(agentId) ?? 0) < maxOpenLeads;
+}
+
+/**
+ * Rank agents whose working pin is within their effective radius of the
+ * customer pin. County is not a gate. Bigger radius does not beat nearer.
+ */
+export function rankAgentsInRange(
   leadPoint: GeoPoint,
   agents: AgentCandidate[],
-  locationRefs: LocationRef[],
   product: "airtel" | "safaricom",
   openLeadCounts: Map<string, number>,
-  /** null = cap disabled (unlimited). */
   maxOpenLeads: number | null,
-  onlinePresenceMinutes: number = 5,
+  onlinePresenceMinutes: number,
+  defaultRadiusKm: number,
 ): RankedAgent[] {
   const ranked: RankedAgent[] = [];
 
   for (const agent of agents) {
     if (!agent.is_available) continue;
-    if (normalizeCountyKey(agent.county) !== normalizeCountyKey(leadCounty)) {
-      continue;
-    }
     if (!agentAcceptsProduct(agent.lead_dispatch_scope, product)) continue;
+    if (!passesCapacity(agent.agent_id, openLeadCounts, maxOpenLeads)) continue;
 
-    const open = openLeadCounts.get(agent.agent_id) ?? 0;
-    if (maxOpenLeads != null && open >= maxOpenLeads) continue;
+    const distance = pinDistanceKm(leadPoint, agent.working_place);
+    if (distance == null) continue;
 
-    const agentPoint = resolveAgentPoint(agent.town, locationRefs);
-    if (!agentPoint) continue;
+    const radius_km = effectiveRadiusKm(agent, defaultRadiusKm);
+    if (distance > radius_km) continue;
 
     ranked.push({
       ...agent,
-      distance_km: distanceKm(leadPoint, agentPoint),
+      distance_km: distance,
+      radius_km,
     });
   }
 
-  ranked.sort((a, b) => a.distance_km - b.distance_km);
+  return sortOnlineThenDistance(ranked, onlinePresenceMinutes);
+}
 
-  const online = ranked.filter((a) =>
-    isAgentOnline(a.last_seen_at, onlinePresenceMinutes),
+/** @deprecated Use rankAgentsInRange. Kept so older call sites compile during rollout. */
+export function rankAgentsInCounty(
+  _leadCounty: string,
+  leadPoint: GeoPoint,
+  agents: AgentCandidate[],
+  _locationRefs: LocationRef[],
+  product: "airtel" | "safaricom",
+  openLeadCounts: Map<string, number>,
+  maxOpenLeads: number | null,
+  onlinePresenceMinutes: number = 5,
+  defaultRadiusKm: number = DISPATCH_DEFAULTS.defaultServiceRadiusKm,
+): RankedAgent[] {
+  return rankAgentsInRange(
+    leadPoint,
+    agents,
+    product,
+    openLeadCounts,
+    maxOpenLeads,
+    onlinePresenceMinutes,
+    defaultRadiusKm,
   );
-  const offline = ranked.filter(
-    (a) => !isAgentOnline(a.last_seen_at, onlinePresenceMinutes),
-  );
-  return [...online, ...offline];
 }
 
 /**
- * County-agnostic fallback agents (admin-designated).
- * Used when no county agent is available / all declined / town unknown —
- * before sending the lead to admin_queue.
+ * Designated fallback agents — not limited by the normal radius.
+ * Used when nobody is in range, then admin queue.
  */
 export function rankFallbackAgents(
   leadPoint: GeoPoint | null,
   agents: AgentCandidate[],
-  locationRefs: LocationRef[],
+  _locationRefs: LocationRef[],
   product: "airtel" | "safaricom",
   openLeadCounts: Map<string, number>,
-  /** null = cap disabled (unlimited). */
   maxOpenLeads: number | null,
   onlinePresenceMinutes: number = 5,
+  defaultRadiusKm: number = DISPATCH_DEFAULTS.defaultServiceRadiusKm,
 ): RankedAgent[] {
   const ranked: RankedAgent[] = [];
 
@@ -146,21 +233,19 @@ export function rankFallbackAgents(
     if (!agent.is_fallback_agent) continue;
     if (!agent.is_available) continue;
     if (!agentAcceptsProduct(agent.lead_dispatch_scope, product)) continue;
+    if (!passesCapacity(agent.agent_id, openLeadCounts, maxOpenLeads)) continue;
 
-    const open = openLeadCounts.get(agent.agent_id) ?? 0;
-    if (maxOpenLeads != null && open >= maxOpenLeads) continue;
-
+    const radius_km = effectiveRadiusKm(agent, defaultRadiusKm);
     let distance_km = 99999;
     if (leadPoint) {
-      const agentPoint = resolveAgentPoint(agent.town, locationRefs);
-      if (agentPoint) {
-        distance_km = distanceKm(leadPoint, agentPoint);
-      }
+      const pinKm = pinDistanceKm(leadPoint, agent.working_place);
+      if (pinKm != null) distance_km = pinKm;
     }
 
     ranked.push({
       ...agent,
       distance_km,
+      radius_km,
     });
   }
 
@@ -179,7 +264,118 @@ export function rankFallbackAgents(
   return ranked;
 }
 
-/** Blind preview payload — no customer name or phone. */
+export type DispatchMatchAgentRow = {
+  agentId: string;
+  name: string | null;
+  workingPlaceName: string | null;
+  distanceKm: number | null;
+  radiusKm: number;
+  inRadius: boolean;
+  reason: "in_range" | "out_of_radius" | "no_pin";
+};
+
+export type DispatchMatchSnapshot = {
+  at: string;
+  reason: string;
+  customerPin: {
+    name: string;
+    formattedAddress: string;
+    lat: number;
+    lng: number;
+  } | null;
+  defaultRadiusKm: number;
+  nearestInRange: DispatchMatchAgentRow[];
+  outOfRadius: DispatchMatchAgentRow[];
+  noPin: DispatchMatchAgentRow[];
+};
+
+function toMatchRow(
+  agent: AgentCandidate,
+  distanceKmValue: number | null,
+  radiusKm: number,
+  reason: DispatchMatchAgentRow["reason"],
+): DispatchMatchAgentRow {
+  return {
+    agentId: agent.agent_id,
+    name: agent.name ?? null,
+    workingPlaceName: parsePreviewGooglePlace(agent.working_place)?.name ?? null,
+    distanceKm: distanceKmValue,
+    radiusKm,
+    inRadius: reason === "in_range",
+    reason,
+  };
+}
+
+export function inspectPinMatch(
+  leadPoint: GeoPoint,
+  agents: AgentCandidate[],
+  product: "airtel" | "safaricom",
+  defaultRadiusKm: number,
+): {
+  inRange: DispatchMatchAgentRow[];
+  outOfRadius: DispatchMatchAgentRow[];
+  noPin: DispatchMatchAgentRow[];
+} {
+  const inRange: DispatchMatchAgentRow[] = [];
+  const outOfRadius: DispatchMatchAgentRow[] = [];
+  const noPin: DispatchMatchAgentRow[] = [];
+
+  for (const agent of agents) {
+    if (!agentAcceptsProduct(agent.lead_dispatch_scope, product)) continue;
+    const radiusKm = effectiveRadiusKm(agent, defaultRadiusKm);
+    const distance = pinDistanceKm(leadPoint, agent.working_place);
+    if (distance == null) {
+      noPin.push(toMatchRow(agent, null, radiusKm, "no_pin"));
+      continue;
+    }
+    if (distance <= radiusKm) {
+      inRange.push(toMatchRow(agent, distance, radiusKm, "in_range"));
+    } else {
+      outOfRadius.push(toMatchRow(agent, distance, radiusKm, "out_of_radius"));
+    }
+  }
+
+  inRange.sort((a, b) => (a.distanceKm ?? 99999) - (b.distanceKm ?? 99999));
+  outOfRadius.sort((a, b) => (a.distanceKm ?? 99999) - (b.distanceKm ?? 99999));
+  return { inRange, outOfRadius, noPin };
+}
+
+export function buildDispatchMatchSnapshot(args: {
+  reason: string;
+  metadata: unknown;
+  leadPoint: GeoPoint | null;
+  agents: AgentCandidate[];
+  product: "airtel" | "safaricom";
+  defaultRadiusKm: number;
+}): DispatchMatchSnapshot {
+  const customer = googlePlaceFromLeadMetadata(args.metadata);
+  const inspected = args.leadPoint
+    ? inspectPinMatch(
+        args.leadPoint,
+        args.agents,
+        args.product,
+        args.defaultRadiusKm,
+      )
+    : { inRange: [], outOfRadius: [], noPin: [] };
+
+  return {
+    at: new Date().toISOString(),
+    reason: args.reason,
+    customerPin: customer
+      ? {
+          name: customer.name,
+          formattedAddress: customer.formattedAddress,
+          lat: customer.lat,
+          lng: customer.lng,
+        }
+      : null,
+    defaultRadiusKm: args.defaultRadiusKm,
+    nearestInRange: inspected.inRange.slice(0, 8),
+    outOfRadius: inspected.outOfRadius.slice(0, 8),
+    noPin: inspected.noPin.slice(0, 8),
+  };
+}
+
 export function buildOfferPreview(
   product: "airtel" | "safaricom",
   county: string | null,
@@ -188,14 +384,15 @@ export function buildOfferPreview(
   deliveryLandmark: string | null,
   packageLabel: string | null,
   createdAt: string,
-  distanceKm: number | null,
-  extras?: { isCallbackReminder?: boolean },
+  distanceKmValue: number | null,
+  extras?: { isCallbackReminder?: boolean; googlePlace?: PreviewGooglePlace | null },
 ): Record<string, unknown> {
+  const googlePlace = extras?.googlePlace ?? null;
   const roughArea =
+    googlePlace?.name?.trim() ||
     installationArea?.trim() ||
     deliveryLandmark?.trim() ||
     null;
-
   const submittedMs = Date.now() - new Date(createdAt).getTime();
   const submittedAgoMinutes = Math.max(0, Math.floor(submittedMs / 60000));
 
@@ -206,7 +403,74 @@ export function buildOfferPreview(
     roughArea,
     packageLabel,
     submittedAgoMinutes,
-    distanceKm: distanceKm != null ? Math.round(distanceKm * 10) / 10 : null,
+    distanceKm:
+      distanceKmValue != null ? roundKm(distanceKmValue) : null,
+    googlePlace,
     ...(extras?.isCallbackReminder ? { isCallbackReminder: true } : {}),
   };
+}
+
+export type PreviewGooglePlace = {
+  placeId: string;
+  name: string;
+  formattedAddress: string;
+  lat: number;
+  lng: number;
+  county?: string | null;
+};
+
+export function parsePreviewGooglePlace(raw: unknown): PreviewGooglePlace | null {
+  if (!raw || typeof raw !== "object") return null;
+  const value = raw as Record<string, unknown>;
+  const placeId = String(value.placeId ?? "").trim();
+  const name = String(value.name ?? "").trim();
+  const lat = Number(value.lat);
+  const lng = Number(value.lng);
+  if (!placeId || !name || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return null;
+  }
+  return {
+    placeId,
+    name,
+    formattedAddress: String(value.formattedAddress ?? "").trim(),
+    lat,
+    lng,
+    county: value.county ? String(value.county) : null,
+  };
+}
+
+export function googlePlaceFromLeadMetadata(
+  metadata: unknown,
+): PreviewGooglePlace | null {
+  if (!metadata || typeof metadata !== "object") return null;
+  return parsePreviewGooglePlace(
+    (metadata as Record<string, unknown>).googlePlace,
+  );
+}
+
+export function pinDistanceFromPlaces(
+  customer: PreviewGooglePlace | null,
+  agentWorkingPlace: unknown,
+): number | null {
+  const agent = parsePreviewGooglePlace(agentWorkingPlace);
+  if (!customer || !agent) return null;
+  return roundKm(
+    distanceKm(
+      { latitude: customer.lat, longitude: customer.lng },
+      { latitude: agent.lat, longitude: agent.lng },
+    ),
+  );
+}
+
+export function parseDispatchMatchSnapshot(
+  metadata: unknown,
+): DispatchMatchSnapshot | null {
+  if (!metadata || typeof metadata !== "object") return null;
+  const raw = (metadata as Record<string, unknown>).dispatchMatch;
+  if (!raw || typeof raw !== "object") return null;
+  const value = raw as DispatchMatchSnapshot;
+  if (!Array.isArray(value.nearestInRange) || !Array.isArray(value.outOfRadius)) {
+    return null;
+  }
+  return value;
 }

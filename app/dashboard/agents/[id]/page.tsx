@@ -6,6 +6,8 @@ import { ChevronLeft, Wallet, TrendingUp, Users, Package, Sparkles, Bell } from 
 import { AgentActions } from "@/components/agents/agent-actions";
 import { AgentDispatchScopeControl } from "@/components/agents/agent-dispatch-scope";
 import { AgentFallbackDispatchControl } from "@/components/agents/agent-fallback-dispatch";
+import { AgentWorkingPlaceControl } from "@/components/agents/agent-working-place";
+import { AgentServiceRadiusControl } from "@/components/agents/agent-service-radius";
 import { AgentRatingStars } from "@/components/agents/agent-rating-stars";
 import { AgentCustomersRegistered } from "@/components/agents/agent-customers-registered";
 import { AgentPaymentManager } from "@/components/agents/agent-payment-manager";
@@ -60,7 +62,7 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
 
   const { data: agent, error } = await supabase
     .from("agents")
-    .select("id, name, email, airtel_phone, safaricom_phone, town, area, status, created_at, total_earnings, available_balance, lead_dispatch_scope, is_fallback_agent, fallback_priority")
+    .select("id, name, email, airtel_phone, safaricom_phone, town, area, status, created_at, total_earnings, available_balance, lead_dispatch_scope, is_fallback_agent, fallback_priority, working_place, working_place_updated_at")
     .eq("id", id)
     .single();
 
@@ -119,6 +121,19 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
       .eq("agent_id", id)
       .maybeSingle(),
     fetchCommissionRates(supabase),
+  ]);
+
+  const [{ data: dispatchSettings }, { data: dispatchConfig }] = await Promise.all([
+    supabase
+      .from("agent_dispatch_settings")
+      .select("service_radius_km")
+      .eq("agent_id", id)
+      .maybeSingle(),
+    supabase
+      .from("dispatch_config")
+      .select("default_service_radius_km")
+      .limit(1)
+      .maybeSingle(),
   ]);
 
   const totalRegistrations = (custRegCount ?? 0) + (safRegCount ?? 0);
@@ -284,6 +299,24 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
       <AgentDispatchScopeControl
         agentId={agent.id}
         initialScope={agent.lead_dispatch_scope ?? "none"}
+      />
+
+      <AgentWorkingPlaceControl
+        agentId={agent.id}
+        initialPlace={agent.working_place}
+        updatedAt={agent.working_place_updated_at ?? null}
+      />
+
+      <AgentServiceRadiusControl
+        agentId={agent.id}
+        initialRadiusKm={
+          dispatchSettings?.service_radius_km != null
+            ? Number(dispatchSettings.service_radius_km)
+            : null
+        }
+        defaultRadiusKm={
+          Number(dispatchConfig?.default_service_radius_km) || 8
+        }
       />
 
       <AgentFallbackDispatchControl

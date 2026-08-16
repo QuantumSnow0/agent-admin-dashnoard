@@ -62,10 +62,10 @@ export function AgentFallbackDispatchControl({
         Designated fallback agent
       </Label>
       <p className="mt-1 text-sm text-gray-600">
-        When no agent is available in the customer&apos;s county (or the order
-        was declined / town unknown), offer this lead to designated fallback
-        agents <strong>one at a time</strong> before the admin queue. Agent must
-        still be Available and within product scope.
+        When nobody is in range of the customer pin, offer this lead to designated
+        fallback agents <strong>one at a time</strong> before the admin queue.
+        Fallback agents are not limited by the normal radius. They must still be
+        Available and within product scope.
       </p>
 
       <label className="mt-4 flex cursor-pointer items-start gap-3">
@@ -77,9 +77,9 @@ export function AgentFallbackDispatchControl({
           onChange={(e) => void save(e.target.checked)}
         />
         <span className="text-sm text-gray-800">
-          <span className="font-medium">Receive overflow / failed-county leads</span>
+          <span className="font-medium">Receive overflow leads when nobody is in range</span>
           <span className="mt-0.5 block text-xs text-gray-500">
-            Same accept/decline flow as normal county offers.
+            Same accept/decline flow. Not limited by the normal radius.
           </span>
         </span>
       </label>

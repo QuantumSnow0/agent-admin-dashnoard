@@ -4,6 +4,17 @@
 
 export type GeoPoint = { latitude: number; longitude: number };
 
+/** Under 1 km → meters; otherwise one decimal km. */
+export function formatDistanceKm(km: number | null | undefined): string {
+  if (km == null || !Number.isFinite(km) || km < 0) return "";
+  if (km < 1) {
+    const meters = Math.round(km * 1000);
+    return meters < 1 ? "< 1 m" : `${meters} m`;
+  }
+  const rounded = Math.round(km * 10) / 10;
+  return `${rounded} km`;
+}
+
 export function distanceKm(a: GeoPoint, b: GeoPoint): number {
   const toRad = (deg: number) => (deg * Math.PI) / 180;
   const R = 6371;

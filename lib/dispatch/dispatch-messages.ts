@@ -14,11 +14,17 @@ export function formatDispatchResultMessage(
   }
 
   if (dispatch.outcome === "admin_queue") {
+    if (dispatch.reason === "no_agents_in_range") {
+      return "Nobody in range. Fallback also empty. Send offer manually.";
+    }
+    if (dispatch.reason === "missing_customer_pin") {
+      return "This lead has no customer pin. Send offer manually.";
+    }
     if (
       dispatch.reason === "no_agents_in_county" ||
       dispatch.reason === "no_agents_or_fallback"
     ) {
-      return "No eligible county or fallback agents left. Send offer manually.";
+      return "No eligible agents left. Send offer manually.";
     }
     if (dispatch.reason === "unknown_county_or_town") {
       return "Town not mapped and no fallback agents. Send offer manually.";

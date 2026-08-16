@@ -17,7 +17,7 @@ export async function GET(
 
     const { data: lead, error: leadError } = await service
       .from("inbound_leads")
-      .select("id, product, county")
+      .select("id, product, county, metadata")
       .eq("id", leadId)
       .maybeSingle();
 
@@ -26,11 +26,13 @@ export async function GET(
     }
 
     const agents = await fetchAssignableAgents(service, lead);
-    const sorted = [
-      ...agents.filter((a) => a.scope_match && a.county_match),
-      ...agents.filter((a) => a.scope_match && !a.county_match),
-      ...agents.filter((a) => !a.scope_match),
-    ];
+    const sorted = [...agents].sort((a, b) => {
+      if (a.in_radius !== b.in_radius) return a.in_radius ? -1 : 1;
+      if (a.scope_match !== b.scope_match) return a.scope_match ? -1 : 1;
+      const da = a.distance_km ?? 99999;
+      const db = b.distance_km ?? 99999;
+      return da - db;
+    });
 
     return NextResponse.json({ agents: sorted });
   } catch (err) {

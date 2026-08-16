@@ -23,6 +23,8 @@ type InboundBody = {
   email?: string | null;
   installationTown?: string;
   installationArea?: string | null;
+  /** Canonical public.locations.id when the website resolved Airtel coverage. */
+  installationLocationId?: string | null;
   deliveryLandmark?: string | null;
   county?: string | null;
   preferredPackage?: string | null;
@@ -140,6 +142,7 @@ Deno.serve(async (req) => {
       county: body.county?.trim() || null,
       installation_town: installationTown,
       installation_area: body.installationArea?.trim() || null,
+      installation_location_id: body.installationLocationId?.trim() || null,
       delivery_landmark: body.deliveryLandmark?.trim() || null,
       customer_name: customerName,
       primary_phone: primaryPhone,

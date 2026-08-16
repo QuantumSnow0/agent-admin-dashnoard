@@ -50,6 +50,13 @@ export type LeadOfferPreview = {
   packageLabel: string | null;
   submittedAgoMinutes: number;
   distanceKm: number | null;
+  googlePlace?: {
+    placeId: string;
+    name: string;
+    formattedAddress: string;
+    lat: number;
+    lng: number;
+  } | null;
 };
 
 export type LeadOfferAction = "accept" | "decline";
