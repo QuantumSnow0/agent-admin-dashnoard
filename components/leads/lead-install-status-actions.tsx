@@ -19,7 +19,7 @@ import {
   Ban,
 } from "lucide-react";
 import { LEAD_INSTALL_COMMISSION_KES } from "@/lib/dispatch/constants";
-import type { AdminInboundLeadRow } from "@/lib/admin-leads";
+import { formatLeadStatusLabel, type AdminInboundLeadRow } from "@/lib/admin-leads";
 
 /** Same vocabulary as customer registrations — maps to inbound_leads.status values. */
 const INSTALL_STATUSES = [
@@ -55,14 +55,6 @@ export function LeadInstallStatusActions({
 }: LeadInstallStatusActionsProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-
-  // Admin can decide the install outcome as soon as KYC/registration completes.
-  // Agent-submitted proof moves to pending_install, but proof is not required
-  // for an admin who has confirmed the outcome through another channel.
-  const inInstallPipeline =
-    lead.status === "kyc_completed" ||
-    INSTALL_STATUSES.some((s) => s.value === lead.status);
-  if (!inInstallPipeline) return null;
 
   const handleStatusChange = async (newStatus: string) => {
     if (newStatus === lead.status) return;
@@ -125,6 +117,11 @@ export function LeadInstallStatusActions({
             {label}
           </DropdownMenuItem>
         ))}
+        {!INSTALL_STATUSES.some((s) => s.value === lead.status) ? (
+          <DropdownMenuItem disabled className="text-xs text-amber-700">
+            Currently “{formatLeadStatusLabel(lead.status)}” — pick a new status
+          </DropdownMenuItem>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );

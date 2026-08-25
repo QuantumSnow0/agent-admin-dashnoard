@@ -302,6 +302,33 @@ export async function fetchAdminInboundLeadById(
   };
 }
 
+export async function fetchAdminInboundLeadsForAgent(
+  client: SupabaseClient,
+  agentId: string,
+  agentName?: string | null,
+): Promise<{ leads: AdminInboundLeadRow[]; error: string | null }> {
+  const slaHours = await fetchDispatchSlaHours(client);
+  const { data: rows, error } = await client
+    .from("inbound_leads")
+    .select(INBOUND_LEAD_SELECT)
+    .eq("assigned_agent_id", agentId)
+    .order("created_at", { ascending: false })
+    .limit(500);
+
+  if (error) return { leads: [], error: error.message };
+
+  const agentNameById = new Map<string, string | null>([
+    [agentId, agentName ?? null],
+  ]);
+
+  return {
+    leads: ((rows ?? []) as InboundLeadRecord[]).map((lead) =>
+      enrichLeadRow(lead, agentNameById, slaHours),
+    ),
+    error: null,
+  };
+}
+
 export async function fetchAssignableAgents(
   service: SupabaseClient,
   lead: Pick<InboundLeadRecord, "product" | "county" | "metadata">,

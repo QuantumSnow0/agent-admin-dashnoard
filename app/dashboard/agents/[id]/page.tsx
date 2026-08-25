@@ -26,6 +26,7 @@ import {
   CUSTOMER_REGISTRATION_ADMIN_SELECT,
   SAFARICOM_REGISTRATION_ADMIN_SELECT,
 } from "@/lib/admin-registrations";
+import { fetchAdminInboundLeadsForAgent } from "@/lib/admin-leads";
 
 interface AgentProfilePageProps {
   params: Promise<{ id: string }>;
@@ -81,6 +82,7 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
     { data: leadInstallRows, error: leadInstallRowsError },
     { data: appRating },
     commissionRates,
+    inboundLeadsResult,
   ] = await Promise.all([
     supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("agent_id", id).eq("commission_exempt", false),
     supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }).eq("agent_id", id),
@@ -121,6 +123,7 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
       .eq("agent_id", id)
       .maybeSingle(),
     fetchCommissionRates(supabase),
+    fetchAdminInboundLeadsForAgent(supabase, id, agent.name),
   ]);
 
   const [{ data: dispatchSettings }, { data: dispatchConfig }] = await Promise.all([
@@ -325,7 +328,12 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
         initialPriority={Number(agent.fallback_priority ?? 100)}
       />
 
-      <AgentCustomersRegistered registrations={registrations ?? []} />
+      <AgentCustomersRegistered
+        registrations={registrations ?? []}
+        inboundLeads={inboundLeadsResult.leads}
+        inboundError={inboundLeadsResult.error}
+        agentId={agent.id}
+      />
     </div>
   );
 }

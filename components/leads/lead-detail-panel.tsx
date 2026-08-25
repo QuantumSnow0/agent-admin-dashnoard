@@ -508,27 +508,20 @@ export function LeadDetailPanel({
               />
             ) : null}
 
-            {(lead.status === "pending_install" ||
-              lead.status === "installed" ||
-              lead.status === "rejected" ||
-              lead.status === "duplicate" ||
-              lead.status === "cancelled" ||
-              lead.status === "kyc_completed") && (
-              <div className="mt-3 flex flex-wrap items-center gap-2 border-b border-gray-100 pb-3">
-                <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Set status
-                </span>
-                <LeadInstallStatusActions lead={lead} onUpdated={onLeadUpdated} />
-                {lead.assigned_agent_id ? (
-                  <Link
-                    href={`/dashboard/agents/${lead.assigned_agent_id}`}
-                    className="text-xs font-medium text-indigo-600 hover:text-indigo-800"
-                  >
-                    Record payout on agent →
-                  </Link>
-                ) : null}
-              </div>
-            )}
+            <div className="mt-3 flex flex-wrap items-center gap-2 border-b border-gray-100 pb-3">
+              <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Set status
+              </span>
+              <LeadInstallStatusActions lead={lead} onUpdated={onLeadUpdated} />
+              {lead.assigned_agent_id ? (
+                <Link
+                  href={`/dashboard/agents/${lead.assigned_agent_id}`}
+                  className="text-xs font-medium text-indigo-600 hover:text-indigo-800"
+                >
+                  Record payout on agent →
+                </Link>
+              ) : null}
+            </div>
             {lead.kyc_started_at ? (
               <Field label="KYC started" value={formatWhen(lead.kyc_started_at)} />
             ) : null}
