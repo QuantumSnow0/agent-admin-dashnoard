@@ -6,7 +6,8 @@ import { dispatchLead } from "../_shared/dispatch/dispatch-service.ts";
 /**
  * lead-outcome (v1)
  *
- * Agent reports KYC progress, install proof, or releases lead for reassignment.
+ * Agent reports KYC progress, install proof, or release.
+ * Release redispatches when another agent is available; otherwise stays assigned.
  * Auth: agent JWT.
  *
  * On action=installed → status pending_install (admin confirms commission + payouts).
@@ -348,6 +349,8 @@ Deno.serve(async (req) => {
     if (RELEASE_ACTIONS.has(action)) {
       const outcome = action === "release" ? "kyc_failed" : action;
       const notes = String(body.notes ?? "").trim();
+      const previousStatus = lead.status;
+      const previousAcceptedAt = lead.accepted_at ?? null;
 
       const { data: agentRow } = await service
         .from("agents")
@@ -388,15 +391,37 @@ Deno.serve(async (req) => {
         excludeAgentIds: [user.id],
       });
 
+      if (dispatchResult.outcome === "offered") {
+        return jsonResponse({
+          success: true,
+          status: "offered",
+          releaseReason: outcome,
+          reassigned: true,
+          dispatch: dispatchResult,
+        });
+      }
+
+      const { error: restoreError } = await service
+        .from("inbound_leads")
+        .update({
+          status: previousStatus,
+          assigned_agent_id: user.id,
+          accepted_at: previousAcceptedAt,
+          kyc_outcome: outcome,
+          metadata,
+        })
+        .eq("id", leadId);
+
+      if (restoreError) {
+        console.error("lead-outcome release restore:", restoreError);
+        return jsonResponse({ error: "Failed to keep lead active" }, 500);
+      }
+
       return jsonResponse({
         success: true,
-        status:
-          dispatchResult.outcome === "offered"
-            ? "offered"
-            : dispatchResult.outcome === "admin_queue"
-              ? "admin_queue"
-              : "needs_reassignment",
+        status: previousStatus,
         releaseReason: outcome,
+        reassigned: false,
         dispatch: dispatchResult,
       });
     }

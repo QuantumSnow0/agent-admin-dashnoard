@@ -25,6 +25,12 @@ export const LEAD_ACTIVE_STATUSES = [
   "kyc_completed",
 ] as const;
 
+/** Admin may pull these off an agent and redispath / re-offer (not KYC-completed). */
+export const LEAD_ADMIN_REASSIGNABLE_STATUSES = [
+  "assigned",
+  "kyc_in_progress",
+] as const;
+
 export const LEAD_CLOSED_STATUSES = ["lost", "expired"] as const;
 
 /** Re-export for install review page (kyc_completed … cancelled). */

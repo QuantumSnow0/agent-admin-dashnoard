@@ -19,6 +19,7 @@ import type { AdminInboundLeadRow, AssignableAgentOption } from "@/lib/admin-lea
 import {
   formatLeadStatusLabel,
   LEAD_ACTIVE_STATUSES,
+  LEAD_ADMIN_REASSIGNABLE_STATUSES,
   LEAD_QUEUE_STATUSES,
 } from "@/lib/admin-leads";
 import {
@@ -132,9 +133,17 @@ export function LeadDetailPanel({
     setMsFormsMessage(null);
   }, [lead?.id]);
 
+  const canReassignActive =
+    lead && !installReviewMode
+      ? LEAD_ADMIN_REASSIGNABLE_STATUSES.includes(
+          lead.status as (typeof LEAD_ADMIN_REASSIGNABLE_STATUSES)[number],
+        )
+      : false;
+
   const canDispatch =
     lead && !installReviewMode
-      ? LEAD_QUEUE_STATUSES.includes(lead.status as (typeof LEAD_QUEUE_STATUSES)[number])
+      ? LEAD_QUEUE_STATUSES.includes(lead.status as (typeof LEAD_QUEUE_STATUSES)[number]) ||
+        canReassignActive
       : false;
 
   const isActiveLead = lead
@@ -176,7 +185,12 @@ export function LeadDetailPanel({
           error?: string;
         };
         if (!cancelled && res.ok) {
-          setAgents(data.agents ?? []);
+          const list = data.agents ?? [];
+          setAgents(
+            lead.assigned_agent_id
+              ? list.filter((agent) => agent.id !== lead.assigned_agent_id)
+              : list,
+          );
         }
       } finally {
         if (!cancelled) setAgentsLoading(false);
@@ -186,7 +200,7 @@ export function LeadDetailPanel({
     return () => {
       cancelled = true;
     };
-  }, [open, lead?.id, canDispatch]);
+  }, [open, lead?.id, lead?.assigned_agent_id, canDispatch]);
 
   const handleSendOffer = async () => {
     if (!selectedAgentId) return;
@@ -339,7 +353,13 @@ export function LeadDetailPanel({
               {lead.assigned_agent_name
                 ? `${lead.assigned_agent_name} accepted this lead.`
                 : "This lead is active with an assigned agent."}
-              {statusFilter === "queue" ? " Check the Active tab for ongoing work." : ""}
+              {canReassignActive
+                ? " You can reassign below (not available after KYC completed)."
+                : statusFilter === "queue"
+                  ? " Check the Active tab for ongoing work."
+                  : lead.status === "kyc_completed"
+                    ? " KYC completed — reassign is disabled."
+                    : ""}
             </p>
           ) : null}
 
@@ -602,9 +622,13 @@ export function LeadDetailPanel({
 
           {canDispatch ? (
             <div className="mt-6 border-t border-gray-100 pt-4">
-              <SectionTitle>Dispatch actions</SectionTitle>
+              <SectionTitle>
+                {canReassignActive ? "Reassign lead" : "Dispatch actions"}
+              </SectionTitle>
               <p className="mb-3 text-sm text-gray-600">
-                Retry automatic matching or send a blind offer to a specific agent.
+                {canReassignActive
+                  ? "Pull this lead from the current agent and auto-match another agent, or send a blind offer to someone specific."
+                  : "Retry automatic matching or send a blind offer to a specific agent."}
               </p>
 
               <Button
@@ -620,11 +644,17 @@ export function LeadDetailPanel({
                     actionLoading === "retry" && "animate-spin",
                   )}
                 />
-                {actionLoading === "retry" ? "Retrying auto-dispatch…" : "Retry auto-dispatch"}
+                {actionLoading === "retry"
+                  ? canReassignActive
+                    ? "Reassigning…"
+                    : "Retrying auto-dispatch…"
+                  : canReassignActive
+                    ? "Reassign via auto-dispatch"
+                    : "Retry auto-dispatch"}
               </Button>
 
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Send offer to agent
+                {canReassignActive ? "Offer to another agent" : "Send offer to agent"}
               </p>
 
               {agentsLoading ? (

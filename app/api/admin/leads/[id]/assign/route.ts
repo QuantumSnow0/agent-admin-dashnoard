@@ -38,6 +38,7 @@ export async function POST(
         agent_scope_mismatch: "Agent cannot receive this product",
         agent_scope_none: "Agent is not enabled for inbound leads",
         unknown_county: "Lead county could not be resolved",
+        same_agent: "Pick a different agent than the one currently assigned",
       };
       const message =
         messages[result.reason] ??

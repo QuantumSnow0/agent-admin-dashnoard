@@ -376,6 +376,8 @@ const OFFERABLE_LEAD_STATUSES = [
   "pending_dispatch",
   "offered",
   "needs_reassignment",
+  "assigned",
+  "kyc_in_progress",
 ] as const;
 
 /**
@@ -407,6 +409,10 @@ export async function offerLeadToAgent(
     )
   ) {
     return { outcome: "error", reason: `invalid_status_${lead.status}` };
+  }
+
+  if (lead.assigned_agent_id && lead.assigned_agent_id === agentId) {
+    return { outcome: "error", reason: "same_agent" };
   }
 
   const locationRefs = await loadLocationRefs(service);
@@ -488,6 +494,12 @@ export async function offerLeadToAgent(
     return { outcome: "error", reason: offerError?.message ?? "offer_insert_failed" };
   }
 
+  const prevMetadata =
+    lead.metadata && typeof lead.metadata === "object"
+      ? (lead.metadata as Record<string, unknown>)
+      : {};
+  const wasAssigned = Boolean(lead.assigned_agent_id);
+
   await service
     .from("inbound_leads")
     .update({
@@ -495,6 +507,21 @@ export async function offerLeadToAgent(
       county,
       assigned_agent_id: null,
       accepted_at: null,
+      ...(wasAssigned
+        ? {
+            reassignment_count: (lead.reassignment_count ?? 0) + 1,
+            metadata: {
+              ...prevMetadata,
+              lastAdminReassign: {
+                previousStatus: lead.status,
+                fromAgentId: lead.assigned_agent_id,
+                toAgentId: agentId,
+                mode: "manual_offer",
+                at: now,
+              },
+            },
+          }
+        : {}),
     })
     .eq("id", leadId);
 
