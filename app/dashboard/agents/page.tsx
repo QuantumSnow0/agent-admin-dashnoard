@@ -8,7 +8,14 @@ const PAGE_SIZE = 25;
 type StatusFilter = "all" | "approved" | "pending" | "rejected" | "banned";
 
 interface AgentsPageProps {
-  searchParams: Promise<{ page?: string; status?: string; q?: string; from?: string; to?: string }>;
+  searchParams: Promise<{
+    page?: string;
+    status?: string;
+    q?: string;
+    from?: string;
+    to?: string;
+    town?: string;
+  }>;
 }
 
 function escapeSearch(q: string): string {
@@ -23,6 +30,7 @@ export default async function AgentsPage({ searchParams }: AgentsPageProps) {
   const searchQuery = (params.q ?? "").trim();
   const dateFrom = params.from ?? "";
   const dateTo = params.to ?? "";
+  const townFilter = (params.town ?? "").trim();
 
   const {
     data: { user },
@@ -48,13 +56,23 @@ export default async function AgentsPage({ searchParams }: AgentsPageProps) {
     { count: pending },
     { count: rejected },
     { count: banned },
+    { data: townRows },
   ] = await Promise.all([
     supabase.from("agents").select("*", { count: "exact", head: true }),
     supabase.from("agents").select("*", { count: "exact", head: true }).eq("status", "approved"),
     supabase.from("agents").select("*", { count: "exact", head: true }).eq("status", "pending"),
     supabase.from("agents").select("*", { count: "exact", head: true }).eq("status", "rejected"),
     supabase.from("agents").select("*", { count: "exact", head: true }).eq("status", "banned"),
+    supabase.from("agents").select("town").not("town", "is", null),
   ]);
+
+  const townOptions = Array.from(
+    new Set(
+      (townRows ?? [])
+        .map((row) => (typeof row.town === "string" ? row.town.trim() : ""))
+        .filter(Boolean),
+    ),
+  ).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
 
   const rangeFrom = (page - 1) * PAGE_SIZE;
   const rangeTo = rangeFrom + PAGE_SIZE - 1;
@@ -72,6 +90,9 @@ export default async function AgentsPage({ searchParams }: AgentsPageProps) {
     agentsQuery = agentsQuery.or(
       `name.ilike.%${escaped}%,email.ilike.%${escaped}%,town.ilike.%${escaped}%,area.ilike.%${escaped}%,airtel_phone.ilike.%${escaped}%,safaricom_phone.ilike.%${escaped}%`
     );
+  }
+  if (townFilter) {
+    agentsQuery = agentsQuery.eq("town", townFilter);
   }
   if (dateFrom) {
     agentsQuery = agentsQuery.gte("created_at", `${dateFrom}T00:00:00.000Z`);
@@ -135,6 +156,8 @@ export default async function AgentsPage({ searchParams }: AgentsPageProps) {
         searchQuery={searchQuery}
         dateFrom={dateFrom}
         dateTo={dateTo}
+        townFilter={townFilter}
+        townOptions={townOptions}
       />
     </div>
   );

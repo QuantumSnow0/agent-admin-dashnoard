@@ -49,6 +49,8 @@ interface AgentsViewProps {
   searchQuery: string;
   dateFrom: string;
   dateTo: string;
+  townFilter: string;
+  townOptions: string[];
 }
 
 export function AgentsView({
@@ -62,18 +64,21 @@ export function AgentsView({
   searchQuery,
   dateFrom,
   dateTo,
+  townFilter,
+  townOptions,
 }: AgentsViewProps) {
   const router = useRouter();
   const getValue = (f: AgentStatus) =>
     f === "all" ? counts.registered : counts[f];
 
   const applyFilters = useCallback(
-    (q: string, from: string, to: string, page = 1) => {
+    (q: string, from: string, to: string, town: string, page = 1) => {
       const params = new URLSearchParams();
       if (currentFilter !== "all") params.set("status", currentFilter);
       if (q.trim()) params.set("q", q.trim());
       if (from) params.set("from", from);
       if (to) params.set("to", to);
+      if (town.trim()) params.set("town", town.trim());
       if (page > 1) params.set("page", String(page));
       const query = params.toString();
       router.replace(query ? `${baseHref}?${query}` : baseHref, { scroll: false });
@@ -83,9 +88,9 @@ export function AgentsView({
 
   const commitSearchQuery = useCallback(
     (q: string) => {
-      applyFilters(q, dateFrom, dateTo, 1);
+      applyFilters(q, dateFrom, dateTo, townFilter, 1);
     },
-    [applyFilters, dateFrom, dateTo]
+    [applyFilters, dateFrom, dateTo, townFilter]
   );
 
   const { searchInput, searchField } = useDebouncedSearchParam(
@@ -94,10 +99,13 @@ export function AgentsView({
   );
 
   const handleDateFromChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    applyFilters(searchInput, e.target.value, dateTo, 1);
+    applyFilters(searchInput, e.target.value, dateTo, townFilter, 1);
   };
   const handleDateToChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    applyFilters(searchInput, dateFrom, e.target.value, 1);
+    applyFilters(searchInput, dateFrom, e.target.value, townFilter, 1);
+  };
+  const handleTownChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    applyFilters(searchInput, dateFrom, dateTo, e.target.value, 1);
   };
 
   const from = totalFiltered === 0 ? 0 : (currentPage - 1) * pageSize + 1;
@@ -108,10 +116,11 @@ export function AgentsView({
   if (searchQuery) params.set("q", searchQuery);
   if (dateFrom) params.set("from", dateFrom);
   if (dateTo) params.set("to", dateTo);
+  if (townFilter) params.set("town", townFilter);
   const queryString = params.toString();
   const pageQuery = (p: number) => (queryString ? `${queryString}&page=${p}` : `page=${p}`);
   const clearHref = currentFilter === "all" ? baseHref : `${baseHref}?status=${currentFilter}`;
-  const hasFilters = !!searchQuery || !!dateFrom || !!dateTo;
+  const hasFilters = !!searchQuery || !!dateFrom || !!dateTo || !!townFilter;
 
   return (
     <>
@@ -123,6 +132,7 @@ export function AgentsView({
           if (searchQuery) cardParams.set("q", searchQuery);
           if (dateFrom) cardParams.set("from", dateFrom);
           if (dateTo) cardParams.set("to", dateTo);
+          if (townFilter) cardParams.set("town", townFilter);
           cardParams.set("page", "1");
           const href = cardParams.toString() ? `${baseHref}?${cardParams.toString()}` : baseHref;
           return (
@@ -158,6 +168,19 @@ export function AgentsView({
           className="h-8 w-40 shrink-0 rounded border border-gray-200 bg-white px-2.5 text-sm placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 sm:w-52"
           aria-label="Search agents"
         />
+        <select
+          value={townFilter}
+          onChange={handleTownChange}
+          className="h-8 max-w-[10rem] shrink-0 rounded border border-gray-200 bg-white px-2.5 text-sm text-gray-700 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 sm:max-w-[14rem]"
+          aria-label="Filter by town"
+        >
+          <option value="">All towns</option>
+          {townOptions.map((town) => (
+            <option key={town} value={town}>
+              {town}
+            </option>
+          ))}
+        </select>
         <input
           type="date"
           value={dateFrom}
@@ -197,7 +220,7 @@ export function AgentsView({
         {!agentsList.length ? (
           <div className="rounded-xl border border-gray-200 bg-gray-50/50 py-12 text-center text-gray-500">
             {hasFilters
-              ? "No agents match your search or date filter."
+              ? "No agents match your search, town, or date filter."
               : currentFilter === "all"
                 ? "No agents yet."
                 : `No ${currentFilter} agents.`}
