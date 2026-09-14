@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { handleCorsPreflight, jsonResponse } from "../_shared/dispatch/cors.ts";
 import { dispatchLead } from "../_shared/dispatch/dispatch-service.ts";
+import { deliverPushNotification } from "../_shared/dispatch/push-delivery.ts";
 
 /**
  * lead-offer-action (v1)
@@ -197,6 +198,38 @@ Deno.serve(async (req) => {
         },
         500,
       );
+    }
+
+    // Notify the submitting agent (lead-gen) that an installer accepted.
+    const submitterId = fullLead.submitted_by_agent_id as string | null;
+    if (submitterId && submitterId !== user.id) {
+      try {
+        const town = String(fullLead.installation_town ?? "").trim();
+        const { data: notification, error: notifyError } = await service
+          .from("notifications")
+          .insert({
+            agent_id: submitterId,
+            type: "LEAD_SUBMITTED_STATUS",
+            title: "Your lead was accepted",
+            message: town
+              ? `An agent accepted your Airtel lead in ${town}.`
+              : "An agent accepted your Airtel lead.",
+            related_id: fullLead.id,
+            metadata: {
+              status: "assigned",
+              product: fullLead.product,
+              source: fullLead.source,
+            },
+          })
+          .select("id, agent_id, type, title, message, related_id, metadata")
+          .single();
+
+        if (!notifyError && notification) {
+          await deliverPushNotification(notification);
+        }
+      } catch (notifyErr) {
+        console.error("lead-offer-action submitter notify:", notifyErr);
+      }
     }
 
     return jsonResponse({

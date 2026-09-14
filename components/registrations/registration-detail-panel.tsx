@@ -227,6 +227,32 @@ export function RegistrationDetailPanel({ registration, open, onClose }: Registr
                 <Field label="Delivery landmark" value={registration.delivery_landmark} />
                 <Field label="Installation location" value={registration.installation_location} />
 
+                {registration.airtel_connect_entry ? (
+                  <>
+                    <h3 className="mb-1 mt-4 text-xs font-bold uppercase tracking-wider text-gray-400">
+                      Airtel Connect
+                    </h3>
+                    <Field
+                      label="Entry path"
+                      value={
+                        registration.airtel_connect_entry === "connect_first"
+                          ? "Airtel Connect → WAM"
+                          : "WAM → Airtel Connect"
+                      }
+                    />
+                    <Field
+                      label="Order ID"
+                      value={registration.airtel_connect_order_id}
+                    />
+                    {!hasText(registration.airtel_connect_order_id) ? (
+                      <p className="mt-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                        Order ID missing — needed for agent payment. Admin can
+                        still manage this record.
+                      </p>
+                    ) : null}
+                  </>
+                ) : null}
+
                 <h3 className="mb-1 mt-4 text-xs font-bold uppercase tracking-wider text-gray-400">Visit</h3>
                 <Field label="Visit date" value={registration.visit_date} />
                 <Field label="Visit time" value={registration.visit_time} />

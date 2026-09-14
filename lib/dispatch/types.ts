@@ -44,6 +44,8 @@ export type CreateInboundLeadPayload = {
 /** Safe preview shown before an agent accepts (no PII). */
 export type LeadOfferPreview = {
   product: LeadProduct;
+  /** inbound_leads.source — hide fixed install fee for agent_own */
+  source?: string | null;
   county: string | null;
   installationTown: string | null;
   roughArea: string | null;

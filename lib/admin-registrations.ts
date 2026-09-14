@@ -9,6 +9,8 @@ export type AdminRegistrationDetailFields = {
   installation_location?: string | null;
   ms_forms_response_id?: string | null;
   ms_forms_submitted_at?: string | null;
+  airtel_connect_entry?: "wam_first" | "connect_first" | null;
+  airtel_connect_order_id?: string | null;
   /** Safaricom raw fields */
   identification_number?: string | null;
   date_of_birth?: string | null;
@@ -77,6 +79,8 @@ export const CUSTOMER_REGISTRATION_ADMIN_SELECT = `
   updated_at,
   ms_forms_response_id,
   ms_forms_submitted_at,
+  airtel_connect_entry,
+  airtel_connect_order_id,
   agents(name)
 `;
 
@@ -210,6 +214,10 @@ export function mapCustomerRegistrationToAdminRow(reg: Record<string, unknown>):
     installation_location: (r.installation_location as string | null) ?? null,
     ms_forms_response_id: (r.ms_forms_response_id as string | null) ?? null,
     ms_forms_submitted_at: (r.ms_forms_submitted_at as string | null) ?? null,
+    airtel_connect_entry:
+      (r.airtel_connect_entry as "wam_first" | "connect_first" | null) ?? null,
+    airtel_connect_order_id:
+      (r.airtel_connect_order_id as string | null) ?? null,
   };
 }
 

@@ -57,6 +57,7 @@ export type InboundLeadRecord = {
   callback_at: string | null;
   preferred_agent_id: string | null;
   assigned_agent_id: string | null;
+  submitted_by_agent_id: string | null;
   accepted_at: string | null;
   call_initiated_at: string | null;
   contact_verified_at: string | null;
@@ -79,6 +80,7 @@ export type InboundLeadRecord = {
 
 export type AdminInboundLeadRow = InboundLeadRecord & {
   assigned_agent_name: string | null;
+  submitted_by_agent_name: string | null;
   is_overdue: boolean;
   hours_since_accept: number | null;
   sla_hours: number;
@@ -120,6 +122,7 @@ const INBOUND_LEAD_SELECT = `
   callback_at,
   preferred_agent_id,
   assigned_agent_id,
+  submitted_by_agent_id,
   accepted_at,
   call_initiated_at,
   contact_verified_at,
@@ -233,7 +236,11 @@ export async function fetchAdminInboundLeads(
 
   const rawLeads = (rows ?? []) as InboundLeadRecord[];
   const agentIds = [
-    ...new Set(rawLeads.map((l) => l.assigned_agent_id).filter(Boolean)),
+    ...new Set(
+      rawLeads
+        .flatMap((l) => [l.assigned_agent_id, l.submitted_by_agent_id])
+        .filter(Boolean),
+    ),
   ] as string[];
 
   const agentNameById = new Map<string, string | null>();
@@ -269,6 +276,9 @@ function enrichLeadRow(
     assigned_agent_name: lead.assigned_agent_id
       ? (agentNameById.get(lead.assigned_agent_id) ?? null)
       : null,
+    submitted_by_agent_name: lead.submitted_by_agent_id
+      ? (agentNameById.get(lead.submitted_by_agent_id) ?? null)
+      : null,
     is_overdue: isLeadOverdue(lead, slaHours),
     hours_since_accept: hoursSinceAccept(lead.accepted_at),
     sla_hours: slaHours,
@@ -293,13 +303,17 @@ export async function fetchAdminInboundLeadById(
   const lead = row as InboundLeadRecord;
   const agentNameById = new Map<string, string | null>();
 
-  if (lead.assigned_agent_id) {
-    const { data: agent } = await service
+  const nameIds = [lead.assigned_agent_id, lead.submitted_by_agent_id].filter(
+    Boolean,
+  ) as string[];
+  if (nameIds.length > 0) {
+    const { data: agents } = await service
       .from("agents")
       .select("id, name")
-      .eq("id", lead.assigned_agent_id)
-      .maybeSingle();
-    if (agent) agentNameById.set(agent.id, agent.name);
+      .in("id", nameIds);
+    for (const agent of agents ?? []) {
+      agentNameById.set(agent.id, agent.name);
+    }
   }
 
   return {

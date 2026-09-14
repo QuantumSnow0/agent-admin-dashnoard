@@ -343,7 +343,11 @@ export async function dispatchLead(
     packageLabel,
     lead.created_at,
     offerDistance,
-    { isCallbackReminder: offeredAsPreferred, googlePlace },
+    {
+      isCallbackReminder: offeredAsPreferred,
+      googlePlace,
+      source: typeof lead.source === "string" ? lead.source : null,
+    },
   );
 
   const { data: priorOffers } = await service

@@ -385,7 +385,11 @@ export function buildOfferPreview(
   packageLabel: string | null,
   createdAt: string,
   distanceKmValue: number | null,
-  extras?: { isCallbackReminder?: boolean; googlePlace?: PreviewGooglePlace | null },
+  extras?: {
+    isCallbackReminder?: boolean;
+    googlePlace?: PreviewGooglePlace | null;
+    source?: string | null;
+  },
 ): Record<string, unknown> {
   const googlePlace = extras?.googlePlace ?? null;
   const roughArea =
@@ -395,9 +399,11 @@ export function buildOfferPreview(
     null;
   const submittedMs = Date.now() - new Date(createdAt).getTime();
   const submittedAgoMinutes = Math.max(0, Math.floor(submittedMs / 60000));
+  const source = extras?.source?.trim() || null;
 
   return {
     product,
+    ...(source ? { source } : {}),
     county,
     installationTown,
     roughArea,

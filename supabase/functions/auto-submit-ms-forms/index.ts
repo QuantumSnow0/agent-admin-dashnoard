@@ -89,7 +89,7 @@ Deno.serve(async (req) => {
     const { data: registration, error: regError } = await service
       .from("customer_registrations")
       .select(
-        "id, agent_id, customer_name, airtel_number, alternate_number, email, preferred_package, units_required, installation_town, delivery_landmark, installation_location, visit_date, visit_time, ms_forms_response_id"
+        "id, agent_id, customer_name, airtel_number, alternate_number, email, preferred_package, units_required, installation_town, delivery_landmark, installation_location, visit_date, visit_time, ms_forms_response_id, registration_workflow"
       )
       .eq("id", registrationId)
       .maybeSingle();
@@ -117,6 +117,20 @@ Deno.serve(async (req) => {
           success: true,
           skipped: true,
           responseId: registration.ms_forms_response_id,
+        }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    if (registration.registration_workflow === "airtel_connect") {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          skipped: true,
+          reason: "airtel_connect_workflow",
         }),
         {
           status: 200,
