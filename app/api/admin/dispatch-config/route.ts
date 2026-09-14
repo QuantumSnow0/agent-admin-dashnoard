@@ -29,7 +29,18 @@ function clampCommissionKes(raw: number): number | null {
 }
 
 const SELECT_FIELDS =
-  "default_service_radius_km, lead_submitter_commission_kes, lead_receiver_commission_kes, lead_submitter_commission_standard_kes, lead_submitter_commission_premium_kes, lead_receiver_commission_standard_kes, lead_receiver_commission_premium_kes";
+  "id, default_service_radius_km, lead_submitter_commission_kes, lead_receiver_commission_kes, lead_submitter_commission_standard_kes, lead_submitter_commission_premium_kes, lead_receiver_commission_standard_kes, lead_receiver_commission_premium_kes" as const;
+
+type DispatchConfigFeeRow = {
+  id: string;
+  default_service_radius_km: number | null;
+  lead_submitter_commission_kes: number | null;
+  lead_receiver_commission_kes: number | null;
+  lead_submitter_commission_standard_kes: number | null;
+  lead_submitter_commission_premium_kes: number | null;
+  lead_receiver_commission_standard_kes: number | null;
+  lead_receiver_commission_premium_kes: number | null;
+};
 
 export async function PATCH(request: Request) {
   const auth = await requireAdminApi();
@@ -103,25 +114,19 @@ export async function PATCH(request: Request) {
     }
   }
 
-  // Keep legacy flat columns as max(std, prem) when package fees are set.
-  if (
-    updates.lead_submitter_commission_standard_kes != null ||
-    updates.lead_submitter_commission_premium_kes != null
-  ) {
-    // Will finalize after fetch if only one side was sent — handled below after merge.
-  }
-
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
   }
 
   try {
     const service = createServiceClient();
-    const { data: existing } = await service
+    const { data: existingRaw } = await service
       .from("dispatch_config")
-      .select(SELECT_FIELDS + ", id")
+      .select(SELECT_FIELDS)
       .limit(1)
       .maybeSingle();
+
+    const existing = existingRaw as DispatchConfigFeeRow | null;
 
     if (!existing?.id) {
       return NextResponse.json(
@@ -166,7 +171,7 @@ export async function PATCH(request: Request) {
       );
     }
 
-    const { data, error } = await service
+    const { data: updatedRaw, error } = await service
       .from("dispatch_config")
       .update(updates)
       .eq("id", existing.id)
@@ -176,6 +181,8 @@ export async function PATCH(request: Request) {
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
+    const data = updatedRaw as DispatchConfigFeeRow;
 
     return NextResponse.json({
       success: true,
