@@ -23,12 +23,16 @@ type AgentRow = {
   area: string | null;
   status: string;
   created_at: string | null;
+  airtel_connect_opened?: boolean | null;
+  airtel_connect_opened_at?: string | null;
   app_rating?: {
     score: number;
     created_at: string;
     opened_play_store: boolean;
   } | null;
 };
+
+type ConnectFilter = "" | "opened" | "not_opened";
 
 const agentCards: { title: string; icon: typeof Users; cardBg: string; filter: AgentStatus }[] = [
   { title: "Registered", icon: Users, cardBg: "bg-indigo-600", filter: "all" },
@@ -51,6 +55,7 @@ interface AgentsViewProps {
   dateTo: string;
   townFilter: string;
   townOptions: string[];
+  connectFilter: ConnectFilter;
 }
 
 export function AgentsView({
@@ -66,19 +71,30 @@ export function AgentsView({
   dateTo,
   townFilter,
   townOptions,
+  connectFilter,
 }: AgentsViewProps) {
   const router = useRouter();
   const getValue = (f: AgentStatus) =>
     f === "all" ? counts.registered : counts[f];
 
   const applyFilters = useCallback(
-    (q: string, from: string, to: string, town: string, page = 1) => {
+    (
+      q: string,
+      from: string,
+      to: string,
+      town: string,
+      connect: string,
+      page = 1,
+    ) => {
       const params = new URLSearchParams();
       if (currentFilter !== "all") params.set("status", currentFilter);
       if (q.trim()) params.set("q", q.trim());
       if (from) params.set("from", from);
       if (to) params.set("to", to);
       if (town.trim()) params.set("town", town.trim());
+      if (connect === "opened" || connect === "not_opened") {
+        params.set("connect", connect);
+      }
       if (page > 1) params.set("page", String(page));
       const query = params.toString();
       router.replace(query ? `${baseHref}?${query}` : baseHref, { scroll: false });
@@ -88,9 +104,9 @@ export function AgentsView({
 
   const commitSearchQuery = useCallback(
     (q: string) => {
-      applyFilters(q, dateFrom, dateTo, townFilter, 1);
+      applyFilters(q, dateFrom, dateTo, townFilter, connectFilter, 1);
     },
-    [applyFilters, dateFrom, dateTo, townFilter]
+    [applyFilters, dateFrom, dateTo, townFilter, connectFilter]
   );
 
   const { searchInput, searchField } = useDebouncedSearchParam(
@@ -99,13 +115,16 @@ export function AgentsView({
   );
 
   const handleDateFromChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    applyFilters(searchInput, e.target.value, dateTo, townFilter, 1);
+    applyFilters(searchInput, e.target.value, dateTo, townFilter, connectFilter, 1);
   };
   const handleDateToChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    applyFilters(searchInput, dateFrom, e.target.value, townFilter, 1);
+    applyFilters(searchInput, dateFrom, e.target.value, townFilter, connectFilter, 1);
   };
   const handleTownChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    applyFilters(searchInput, dateFrom, dateTo, e.target.value, 1);
+    applyFilters(searchInput, dateFrom, dateTo, e.target.value, connectFilter, 1);
+  };
+  const handleConnectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    applyFilters(searchInput, dateFrom, dateTo, townFilter, e.target.value, 1);
   };
 
   const from = totalFiltered === 0 ? 0 : (currentPage - 1) * pageSize + 1;
@@ -117,10 +136,12 @@ export function AgentsView({
   if (dateFrom) params.set("from", dateFrom);
   if (dateTo) params.set("to", dateTo);
   if (townFilter) params.set("town", townFilter);
+  if (connectFilter) params.set("connect", connectFilter);
   const queryString = params.toString();
   const pageQuery = (p: number) => (queryString ? `${queryString}&page=${p}` : `page=${p}`);
   const clearHref = currentFilter === "all" ? baseHref : `${baseHref}?status=${currentFilter}`;
-  const hasFilters = !!searchQuery || !!dateFrom || !!dateTo || !!townFilter;
+  const hasFilters =
+    !!searchQuery || !!dateFrom || !!dateTo || !!townFilter || !!connectFilter;
 
   return (
     <>
@@ -133,6 +154,7 @@ export function AgentsView({
           if (dateFrom) cardParams.set("from", dateFrom);
           if (dateTo) cardParams.set("to", dateTo);
           if (townFilter) cardParams.set("town", townFilter);
+          if (connectFilter) cardParams.set("connect", connectFilter);
           cardParams.set("page", "1");
           const href = cardParams.toString() ? `${baseHref}?${cardParams.toString()}` : baseHref;
           return (
@@ -158,7 +180,6 @@ export function AgentsView({
         })}
       </div>
 
-      {/* Search and date filter – instant (debounced search, immediate date) */}
       <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-gray-50/50 px-3 py-2">
         <Search className="h-4 w-4 shrink-0 text-gray-400" />
         <input
@@ -180,6 +201,16 @@ export function AgentsView({
               {town}
             </option>
           ))}
+        </select>
+        <select
+          value={connectFilter}
+          onChange={handleConnectChange}
+          className="h-8 shrink-0 rounded border border-gray-200 bg-white px-2.5 text-sm text-gray-700 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          aria-label="Filter by Airtel Connect account"
+        >
+          <option value="">All Connect</option>
+          <option value="opened">Connect opened</option>
+          <option value="not_opened">Connect not opened</option>
         </select>
         <input
           type="date"
@@ -220,7 +251,7 @@ export function AgentsView({
         {!agentsList.length ? (
           <div className="rounded-xl border border-gray-200 bg-gray-50/50 py-12 text-center text-gray-500">
             {hasFilters
-              ? "No agents match your search, town, or date filter."
+              ? "No agents match your search, town, Connect, or date filter."
               : currentFilter === "all"
                 ? "No agents yet."
                 : `No ${currentFilter} agents.`}
@@ -253,7 +284,14 @@ export function AgentsView({
                     key={a.id}
                     className={`grid grid-cols-12 gap-4 px-6 py-4 text-sm align-middle border-b border-white/10 last:border-b-0 text-white ${rowBg}`}
                   >
-                    <div className="col-span-3 truncate font-medium">{a.name || "—"}</div>
+                    <div className="col-span-3 min-w-0">
+                      <div className="truncate font-medium">{a.name || "—"}</div>
+                      {a.airtel_connect_opened ? (
+                        <span className="mt-0.5 inline-flex rounded bg-white/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                          Connect opened
+                        </span>
+                      ) : null}
+                    </div>
                     <div className="col-span-2 truncate text-white/90">{a.email || "—"}</div>
                     <div className="col-span-2 truncate text-white/90">
                       {[a.airtel_phone, a.safaricom_phone].filter(Boolean).join(" · ") || "—"}
@@ -280,6 +318,7 @@ export function AgentsView({
                           name: a.name ?? undefined,
                           email: a.email ?? "",
                           status: a.status,
+                          airtel_connect_opened: a.airtel_connect_opened === true,
                         }}
                       />
                     </div>

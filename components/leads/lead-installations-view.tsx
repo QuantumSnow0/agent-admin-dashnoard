@@ -22,6 +22,7 @@ import {
   leadInstallCommissionLabel,
 } from "@/lib/lead-install-statuses";
 import { getLeadInstallCommissionKes } from "@/lib/lead-install-commission";
+import type { LeadPackageFees } from "@/lib/lead-install-commission";
 import { LeadInstallStatusActions } from "@/components/leads/lead-install-status-actions";
 import { LeadDetailPanel } from "@/components/leads/lead-detail-panel";
 
@@ -46,6 +47,9 @@ type LeadInstallationsViewProps = {
   agentIdFilter: string;
   agentsList: AgentOption[];
   counts: InstallCounts;
+  receiverFees?: LeadPackageFees;
+  /** @deprecated use receiverFees */
+  receiverCommissionKes?: number;
 };
 
 export function LeadInstallationsView({
@@ -56,7 +60,13 @@ export function LeadInstallationsView({
   agentIdFilter,
   agentsList,
   counts,
+  receiverFees,
+  receiverCommissionKes = 0,
 }: LeadInstallationsViewProps) {
+  const resolvedReceiverFees: LeadPackageFees = receiverFees ?? {
+    standard: receiverCommissionKes,
+    premium: receiverCommissionKes,
+  };
   const router = useRouter();
   const [leads, setLeads] = useState(initialLeads);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -148,6 +158,7 @@ export function LeadInstallationsView({
         onSendOffer={async () => {}}
         onLeadUpdated={handleLeadUpdated}
         installReviewMode
+        receiverFees={resolvedReceiverFees}
       />
 
       <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-gray-50/50 px-3 py-2">
@@ -288,8 +299,19 @@ export function LeadInstallationsView({
                           </td>
                           <td className="px-3 py-2 tabular-nums">
                             {lead.status === "installed"
-                              ? `KSh ${getLeadInstallCommissionKes(lead).toLocaleString()}`
-                              : leadInstallCommissionLabel(lead.status)}
+                              ? getLeadInstallCommissionKes(lead) > 0
+                                ? `KSh ${getLeadInstallCommissionKes(lead).toLocaleString()}`
+                                : "—"
+                              : leadInstallCommissionLabel(lead.status, {
+                                  source: lead.source,
+                                  submitted_by_agent_id:
+                                    lead.submitted_by_agent_id,
+                                  preferredPackage:
+                                    lead.plan_label ?? lead.preferred_package,
+                                  commission_earned_ksh:
+                                    lead.commission_earned_ksh,
+                                  receiverFees: resolvedReceiverFees,
+                                })}
                           </td>
                           <td className="px-3 py-2 text-gray-700">
                             {lead.assigned_agent_name ?? "—"}
@@ -306,6 +328,7 @@ export function LeadInstallationsView({
                             <LeadInstallStatusActions
                               lead={lead}
                               stopPropagation
+                              receiverFees={resolvedReceiverFees}
                               onUpdated={(l) =>
                                 handleLeadUpdated(l as AdminInboundLeadRow)
                               }

@@ -15,6 +15,7 @@ import {
 } from "@/lib/admin-leads";
 import { getLeadReleaseInfo } from "@/lib/lead-release";
 import { getLeadInstallCommissionKes } from "@/lib/lead-install-commission";
+import type { LeadPackageFees } from "@/lib/lead-install-commission";
 import { LeadsRealtime } from "@/components/leads/leads-realtime";
 import { LeadDetailPanel } from "@/components/leads/lead-detail-panel";
 import { LeadInstallStatusActions } from "@/components/leads/lead-install-status-actions";
@@ -36,6 +37,9 @@ type LeadsViewProps = {
   searchQuery: string;
   counts: LeadTabCounts;
   serviceConfigured: boolean;
+  receiverFees?: LeadPackageFees;
+  /** @deprecated use receiverFees */
+  receiverCommissionKes?: number;
 };
 
 const STATUS_STYLES: Record<string, string> = {
@@ -72,7 +76,13 @@ export function LeadsView({
   searchQuery,
   counts: initialCounts,
   serviceConfigured,
+  receiverFees,
+  receiverCommissionKes = 0,
 }: LeadsViewProps) {
+  const resolvedReceiverFees: LeadPackageFees = receiverFees ?? {
+    standard: receiverCommissionKes,
+    premium: receiverCommissionKes,
+  };
   const router = useRouter();
   const [leads, setLeads] = useState(initialLeads);
   const [counts, setCounts] = useState(initialCounts);
@@ -240,6 +250,7 @@ export function LeadsView({
           );
           void refreshLeads();
         }}
+        receiverFees={resolvedReceiverFees}
       />
 
       {!serviceConfigured ? (
@@ -428,6 +439,7 @@ export function LeadsView({
                             <LeadInstallStatusActions
                               lead={lead}
                               stopPropagation
+                              receiverFees={resolvedReceiverFees}
                               onUpdated={(updated) => {
                                 setLeads((prev) =>
                                   prev.map((row) =>

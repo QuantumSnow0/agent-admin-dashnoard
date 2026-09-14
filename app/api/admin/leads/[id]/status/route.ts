@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { requireAdminApi } from "@/lib/admin-api";
 import { fetchAdminInboundLeadById } from "@/lib/admin-leads";
-import { LEAD_INSTALL_COMMISSION_KES } from "@/lib/dispatch/constants";
+import { resolveLeadInstallConfirmKes } from "@/lib/lead-install-commission";
 import { deliverPushNotification } from "@/lib/dispatch/push-delivery";
 
 export const dynamic = "force-dynamic";
@@ -70,10 +70,33 @@ export async function PATCH(
     };
 
     if (nextStatus === "installed") {
-      const commissionKes =
-        Number(lead.commission_earned_ksh) > 0
-          ? Number(lead.commission_earned_ksh)
-          : LEAD_INSTALL_COMMISSION_KES;
+      const { data: dispatchCfg } = await service
+        .from("dispatch_config")
+        .select(
+          "lead_receiver_commission_kes, lead_receiver_commission_standard_kes, lead_receiver_commission_premium_kes",
+        )
+        .limit(1)
+        .maybeSingle();
+
+      const receiverStd = Number(
+        dispatchCfg?.lead_receiver_commission_standard_kes ??
+          dispatchCfg?.lead_receiver_commission_kes,
+      );
+      const receiverPrem = Number(
+        dispatchCfg?.lead_receiver_commission_premium_kes ??
+          dispatchCfg?.lead_receiver_commission_kes,
+      );
+
+      const commissionKes = resolveLeadInstallConfirmKes({
+        source: lead.source,
+        submitted_by_agent_id: lead.submitted_by_agent_id,
+        preferredPackage: lead.plan_label ?? lead.preferred_package,
+        existingCommissionKes: lead.commission_earned_ksh,
+        receiverFees: {
+          standard: Number.isFinite(receiverStd) ? receiverStd : 0,
+          premium: Number.isFinite(receiverPrem) ? receiverPrem : 0,
+        },
+      });
 
       update.installed_at = lead.installed_at ?? now;
       update.commission_earned_ksh = commissionKes;
@@ -127,8 +150,7 @@ export async function PATCH(
       lead.assigned_agent_id &&
       lead.status !== "installed"
     ) {
-      const amount =
-        Number(update.commission_earned_ksh) || LEAD_INSTALL_COMMISSION_KES;
+      const amount = Number(update.commission_earned_ksh) || 0;
       try {
         const { data: notification, error: notifyError } = await service
           .from("notifications")
@@ -136,7 +158,10 @@ export async function PATCH(
             agent_id: lead.assigned_agent_id,
             related_id: leadId,
             title: "Installation confirmed",
-            message: `Admin confirmed install for ${lead.customer_name}. Commission KSh ${amount} will be paid with your next payout.`,
+            message:
+              amount > 0
+                ? `Admin confirmed install for ${lead.customer_name}. Commission KSh ${amount} will be paid with your next payout.`
+                : `Admin confirmed install for ${lead.customer_name}.`,
             type: "LEAD_INSTALLED",
             is_read: false,
             metadata: {

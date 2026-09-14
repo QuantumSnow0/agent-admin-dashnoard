@@ -2,10 +2,13 @@
  * Inbound lead install review statuses (mirror customer_registrations).
  *
  * pending_install ≈ registration "pending" (agent submitted proof).
- * installed ≈ registration "installed" (admin confirmed → KSh 200 commission).
+ * installed ≈ registration "installed" (admin confirmed → commission).
  */
 
-import { LEAD_INSTALL_COMMISSION_KES } from "@/lib/dispatch/constants";
+import {
+  resolveLeadInstallDisplayKes,
+  type LeadPackageFees,
+} from "@/lib/lead-install-commission";
 
 export const LEAD_INSTALL_REVIEW_STATUSES = [
   "kyc_completed",
@@ -60,12 +63,43 @@ export function formatLeadInstallStatusLabel(status: string): string {
   }
 }
 
-export function leadInstallCommissionLabel(status: string): string {
+export function leadInstallCommissionLabel(
+  status: string,
+  opts?: {
+    source?: string | null;
+    submitted_by_agent_id?: string | null;
+    preferredPackage?: string | null;
+    commission_earned_ksh?: number | null;
+    receiverFees?: LeadPackageFees | null;
+    /** @deprecated use receiverFees */
+    receiverCommissionKes?: number | null;
+  },
+): string {
   if (status === "installed") {
-    return `KSh ${LEAD_INSTALL_COMMISSION_KES}`;
+    const stored = Number(opts?.commission_earned_ksh);
+    if (Number.isFinite(stored) && stored > 0) {
+      return `KSh ${Math.round(stored).toLocaleString()}`;
+    }
+    const display = resolveLeadInstallDisplayKes({
+      source: opts?.source,
+      submitted_by_agent_id: opts?.submitted_by_agent_id,
+      preferredPackage: opts?.preferredPackage,
+      receiverFees: opts?.receiverFees,
+      receiverCommissionKes: opts?.receiverCommissionKes,
+    });
+    return display != null ? `KSh ${display.toLocaleString()}` : "—";
   }
   if (status === "pending_install") {
-    return "Awaiting confirm";
+    const display = resolveLeadInstallDisplayKes({
+      source: opts?.source,
+      submitted_by_agent_id: opts?.submitted_by_agent_id,
+      preferredPackage: opts?.preferredPackage,
+      receiverFees: opts?.receiverFees,
+      receiverCommissionKes: opts?.receiverCommissionKes,
+    });
+    return display != null
+      ? `Awaiting confirm (KSh ${display.toLocaleString()})`
+      : "Awaiting confirm";
   }
   if (status === "kyc_completed") {
     return "Awaiting install";

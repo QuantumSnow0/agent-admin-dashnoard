@@ -18,26 +18,18 @@ import {
   Copy,
   Ban,
 } from "lucide-react";
-import { LEAD_INSTALL_COMMISSION_KES } from "@/lib/dispatch/constants";
+import { resolveLeadInstallDisplayKes } from "@/lib/lead-install-commission";
+import type { LeadPackageFees } from "@/lib/lead-install-commission";
 import { formatLeadStatusLabel, type AdminInboundLeadRow } from "@/lib/admin-leads";
-
-/** Same vocabulary as customer registrations — maps to inbound_leads.status values. */
-const INSTALL_STATUSES = [
-  { value: "pending_install", label: "Pending", icon: Clock },
-  {
-    value: "installed",
-    label: `Installed (KSh ${LEAD_INSTALL_COMMISSION_KES})`,
-    icon: Package,
-  },
-  { value: "rejected", label: "Rejected", icon: XCircle },
-  { value: "duplicate", label: "Duplicate", icon: Copy },
-  { value: "cancelled", label: "Cancelled", icon: Ban },
-] as const;
 
 type LeadInstallStatusActionsProps = {
   lead: {
     id: string;
     status: string;
+    source?: string | null;
+    submitted_by_agent_id?: string | null;
+    preferred_package?: string | null;
+    plan_label?: string | null;
     airtel_sr_number?: string | null;
     safaricom_imei?: string | null;
     product?: string;
@@ -46,15 +38,45 @@ type LeadInstallStatusActionsProps = {
   onUpdated?: (lead: AdminInboundLeadRow) => void;
   /** Stop row click-through when used in a table row */
   stopPropagation?: boolean;
+  receiverFees?: LeadPackageFees;
+  /** @deprecated use receiverFees */
+  receiverCommissionKes?: number;
 };
 
 export function LeadInstallStatusActions({
   lead,
   onUpdated,
   stopPropagation = false,
+  receiverFees,
+  receiverCommissionKes = 0,
 }: LeadInstallStatusActionsProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+
+  const earn = resolveLeadInstallDisplayKes({
+    source: lead.source,
+    submitted_by_agent_id: lead.submitted_by_agent_id,
+    preferredPackage: lead.plan_label ?? lead.preferred_package,
+    receiverFees: receiverFees ?? {
+      standard: receiverCommissionKes,
+      premium: receiverCommissionKes,
+    },
+  });
+
+  const installStatuses = [
+    { value: "pending_install", label: "Pending", icon: Clock },
+    {
+      value: "installed",
+      label:
+        earn != null
+          ? `Installed (KSh ${earn.toLocaleString()})`
+          : "Installed",
+      icon: Package,
+    },
+    { value: "rejected", label: "Rejected", icon: XCircle },
+    { value: "duplicate", label: "Duplicate", icon: Copy },
+    { value: "cancelled", label: "Cancelled", icon: Ban },
+  ] as const;
 
   const handleStatusChange = async (newStatus: string) => {
     if (newStatus === lead.status) return;
@@ -106,7 +128,7 @@ export function LeadInstallStatusActions({
         onClick={stopPropagation ? (e) => e.stopPropagation() : undefined}
       >
         <DropdownMenuLabel>Set status</DropdownMenuLabel>
-        {INSTALL_STATUSES.map(({ value, label, icon: Icon }) => (
+        {installStatuses.map(({ value, label, icon: Icon }) => (
           <DropdownMenuItem
             key={value}
             onClick={() => void handleStatusChange(value)}
@@ -117,7 +139,7 @@ export function LeadInstallStatusActions({
             {label}
           </DropdownMenuItem>
         ))}
-        {!INSTALL_STATUSES.some((s) => s.value === lead.status) ? (
+        {!installStatuses.some((s) => s.value === lead.status) ? (
           <DropdownMenuItem disabled className="text-xs text-amber-700">
             Currently “{formatLeadStatusLabel(lead.status)}” — pick a new status
           </DropdownMenuItem>

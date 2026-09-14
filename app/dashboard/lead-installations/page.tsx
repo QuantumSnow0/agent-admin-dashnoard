@@ -52,6 +52,7 @@ export default async function LeadInstallationsPage({ searchParams }: PageProps)
     cancelled: 0,
   };
   let agentsList: { id: string; name: string | null }[] = [];
+  let receiverFees = { standard: 0, premium: 0 };
 
   const serviceConfigured = Boolean(
     process.env.NEXT_PUBLIC_SUPABASE_URL &&
@@ -61,23 +62,44 @@ export default async function LeadInstallationsPage({ searchParams }: PageProps)
   if (serviceConfigured) {
     try {
       const service = createServiceClient();
-      const [leadsResult, installCounts, agentsRes] = await Promise.all([
-        fetchAdminLeadInstallations(service, {
-          statusFilter,
-          searchQuery,
-          agentId: agentIdFilter || undefined,
-        }),
-        fetchLeadInstallationCounts(service),
-        service
-          .from("agents")
-          .select("id, name")
-          .eq("status", "approved")
-          .order("name"),
-      ]);
+      const [leadsResult, installCounts, agentsRes, configRes] =
+        await Promise.all([
+          fetchAdminLeadInstallations(service, {
+            statusFilter,
+            searchQuery,
+            agentId: agentIdFilter || undefined,
+          }),
+          fetchLeadInstallationCounts(service),
+          service
+            .from("agents")
+            .select("id, name")
+            .eq("status", "approved")
+            .order("name"),
+          service
+            .from("dispatch_config")
+            .select(
+              "lead_receiver_commission_kes, lead_receiver_commission_standard_kes, lead_receiver_commission_premium_kes",
+            )
+            .limit(1)
+            .maybeSingle(),
+        ]);
       leads = leadsResult.leads;
       error = leadsResult.error;
       counts = installCounts;
       agentsList = agentsRes.data ?? [];
+      const receiverStd = Number(
+        configRes.data?.lead_receiver_commission_standard_kes ??
+          configRes.data?.lead_receiver_commission_kes,
+      );
+      const receiverPrem = Number(
+        configRes.data?.lead_receiver_commission_premium_kes ??
+          configRes.data?.lead_receiver_commission_kes,
+      );
+      receiverFees = {
+        standard: Number.isFinite(receiverStd) && receiverStd >= 0 ? receiverStd : 0,
+        premium:
+          Number.isFinite(receiverPrem) && receiverPrem >= 0 ? receiverPrem : 0,
+      };
     } catch (err) {
       error = err instanceof Error ? err.message : "Failed to load";
     }
@@ -178,6 +200,7 @@ export default async function LeadInstallationsPage({ searchParams }: PageProps)
           agentIdFilter={agentIdFilter}
           agentsList={agentsList}
           counts={counts}
+          receiverFees={receiverFees}
         />
       )}
     </div>

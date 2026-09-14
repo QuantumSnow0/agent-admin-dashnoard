@@ -28,9 +28,12 @@ import {
 } from "@/lib/dispatch/matching";
 import { formatDistanceKm } from "@/lib/dispatch/geo";
 import { getLeadReleaseInfo } from "@/lib/lead-release";
-import { getLeadInstallCommissionKes } from "@/lib/lead-install-commission";
+import {
+  getLeadInstallCommissionKes,
+  resolveLeadInstallDisplayKes,
+  type LeadPackageFees,
+} from "@/lib/lead-install-commission";
 import { LeadInstallStatusActions } from "@/components/leads/lead-install-status-actions";
-import { LEAD_INSTALL_COMMISSION_KES } from "@/lib/dispatch/constants";
 
 const STATUS_STYLES: Record<string, string> = {
   admin_queue: "bg-amber-100 text-amber-800 border-amber-200",
@@ -107,6 +110,9 @@ type LeadDetailPanelProps = {
   onLeadUpdated: (lead: AdminInboundLeadRow) => void;
   /** Hide dispatch controls — install review page only */
   installReviewMode?: boolean;
+  receiverFees?: LeadPackageFees;
+  /** @deprecated use receiverFees */
+  receiverCommissionKes?: number;
 };
 
 export function LeadDetailPanel({
@@ -120,7 +126,13 @@ export function LeadDetailPanel({
   onSendOffer,
   onLeadUpdated,
   installReviewMode = false,
+  receiverFees,
+  receiverCommissionKes = 0,
 }: LeadDetailPanelProps) {
+  const resolvedReceiverFees: LeadPackageFees = receiverFees ?? {
+    standard: receiverCommissionKes,
+    premium: receiverCommissionKes,
+  };
   const [agents, setAgents] = useState<AssignableAgentOption[]>([]);
   const [agentsLoading, setAgentsLoading] = useState(false);
   const [agentSearch, setAgentSearch] = useState("");
@@ -518,21 +530,42 @@ export function LeadDetailPanel({
             {lead.status === "pending_install" ? (
               <Field
                 label="Commission"
-                value={`Awaiting admin confirm (KSh ${LEAD_INSTALL_COMMISSION_KES})`}
+                value={(() => {
+                  const earn = resolveLeadInstallDisplayKes({
+                    source: lead.source,
+                    submitted_by_agent_id: lead.submitted_by_agent_id,
+                    preferredPackage: lead.plan_label ?? lead.preferred_package,
+                    receiverFees: resolvedReceiverFees,
+                  });
+                  return earn != null
+                    ? `Awaiting admin confirm (KSh ${earn.toLocaleString()})`
+                    : "Awaiting admin confirm (no fee set)";
+                })()}
               />
             ) : null}
             {lead.status === "installed" ? (
-              <Field
-                label="Install commission"
-                value={`KSh ${getLeadInstallCommissionKes(lead).toLocaleString()} — pay via agent payouts`}
-              />
+              getLeadInstallCommissionKes(lead) > 0 ? (
+                <Field
+                  label="Install commission"
+                  value={`KSh ${getLeadInstallCommissionKes(lead).toLocaleString()} — pay via agent payouts`}
+                />
+              ) : (
+                <Field
+                  label="Install commission"
+                  value="None (agent-submitted lead; receiver fee was 0)"
+                />
+              )
             ) : null}
 
             <div className="mt-3 flex flex-wrap items-center gap-2 border-b border-gray-100 pb-3">
               <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
                 Set status
               </span>
-              <LeadInstallStatusActions lead={lead} onUpdated={onLeadUpdated} />
+              <LeadInstallStatusActions
+                lead={lead}
+                onUpdated={onLeadUpdated}
+                receiverFees={resolvedReceiverFees}
+              />
               {lead.assigned_agent_id ? (
                 <Link
                   href={`/dashboard/agents/${lead.assigned_agent_id}`}
@@ -564,6 +597,12 @@ export function LeadDetailPanel({
               <Field label="Registration ID" value={lead.registration_id} />
             ) : null}
             <Field label="Source" value={lead.source} />
+            {lead.submitted_by_agent_id ? (
+              <Field
+                label="Submitted by agent"
+                value={lead.submitted_by_agent_name ?? lead.submitted_by_agent_id}
+              />
+            ) : null}
             <Field label="Submitted" value={formatWhen(lead.created_at)} />
           </dl>
 

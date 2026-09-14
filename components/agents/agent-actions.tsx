@@ -12,7 +12,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreVertical, CheckCircle2, XCircle, Ban, User } from "lucide-react";
+import {
+  MoreVertical,
+  CheckCircle2,
+  XCircle,
+  Ban,
+  User,
+  Smartphone,
+  Undo2,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 interface AgentActionsProps {
@@ -21,6 +29,7 @@ interface AgentActionsProps {
     name?: string;
     email: string;
     status: string;
+    airtel_connect_opened?: boolean;
   };
 }
 
@@ -64,6 +73,38 @@ export function AgentActions({ agent }: AgentActionsProps) {
     } catch (error) {
       console.error("Error updating agent status:", error);
       alert("An error occurred while updating the agent status");
+    } finally {
+      setLoading(false);
+      setActionLoading(null);
+    }
+  };
+
+  const handleAirtelConnect = async (opened: boolean) => {
+    setActionLoading(opened ? "connect_open" : "connect_clear");
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/agents/${agent.id}/airtel-connect`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ opened, notify: opened }),
+      });
+      const data = (await res.json()) as {
+        error?: string;
+        notified?: boolean;
+      };
+      if (!res.ok) {
+        throw new Error(data.error ?? "Update failed");
+      }
+      if (opened) {
+        alert(
+          data.notified
+            ? "Marked as Connect opened. Agent was notified with setup steps."
+            : "Marked as Connect opened. Notification could not be sent — check later.",
+        );
+      }
+      router.refresh();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Could not update Airtel Connect status");
     } finally {
       setLoading(false);
       setActionLoading(null);
@@ -144,6 +185,8 @@ export function AgentActions({ agent }: AgentActionsProps) {
     }
   };
 
+  const connectOpened = agent.airtel_connect_opened === true;
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -157,10 +200,37 @@ export function AgentActions({ agent }: AgentActionsProps) {
           <MoreVertical className="h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-48">
+      <DropdownMenuContent align="end" className="w-64">
         <DropdownMenuLabel>Actions</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {getStatusActions()}
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel className="text-xs font-normal text-gray-500">
+          Airtel Connect app
+        </DropdownMenuLabel>
+        {connectOpened ? (
+          <DropdownMenuItem
+            onClick={() => void handleAirtelConnect(false)}
+            disabled={loading}
+            className="text-gray-700 focus:text-gray-700"
+          >
+            <Undo2 className="mr-2 h-4 w-4" />
+            {actionLoading === "connect_clear"
+              ? "Clearing…"
+              : "Clear Connect opened"}
+          </DropdownMenuItem>
+        ) : (
+          <DropdownMenuItem
+            onClick={() => void handleAirtelConnect(true)}
+            disabled={loading}
+            className="text-red-700 focus:text-red-700"
+          >
+            <Smartphone className="mr-2 h-4 w-4" />
+            {actionLoading === "connect_open"
+              ? "Saving…"
+              : "Mark Connect opened + notify"}
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
           <Link href={`/dashboard/agents/${agent.id}`} className="flex cursor-pointer items-center text-blue-700 focus:text-blue-700">

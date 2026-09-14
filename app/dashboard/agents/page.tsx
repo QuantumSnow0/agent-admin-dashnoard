@@ -15,6 +15,7 @@ interface AgentsPageProps {
     from?: string;
     to?: string;
     town?: string;
+    connect?: string;
   }>;
 }
 
@@ -31,6 +32,11 @@ export default async function AgentsPage({ searchParams }: AgentsPageProps) {
   const dateFrom = params.from ?? "";
   const dateTo = params.to ?? "";
   const townFilter = (params.town ?? "").trim();
+  const connectFilterRaw = (params.connect ?? "").trim().toLowerCase();
+  const connectFilter =
+    connectFilterRaw === "opened" || connectFilterRaw === "not_opened"
+      ? connectFilterRaw
+      : "";
 
   const {
     data: { user },
@@ -79,7 +85,10 @@ export default async function AgentsPage({ searchParams }: AgentsPageProps) {
 
   let agentsQuery = supabase
     .from("agents")
-    .select("id, name, email, airtel_phone, safaricom_phone, town, area, status, created_at", { count: "exact" })
+    .select(
+      "id, name, email, airtel_phone, safaricom_phone, town, area, status, created_at, airtel_connect_opened, airtel_connect_opened_at",
+      { count: "exact" },
+    )
     .order("created_at", { ascending: false });
 
   if (statusFilter !== "all") {
@@ -93,6 +102,11 @@ export default async function AgentsPage({ searchParams }: AgentsPageProps) {
   }
   if (townFilter) {
     agentsQuery = agentsQuery.eq("town", townFilter);
+  }
+  if (connectFilter === "opened") {
+    agentsQuery = agentsQuery.eq("airtel_connect_opened", true);
+  } else if (connectFilter === "not_opened") {
+    agentsQuery = agentsQuery.eq("airtel_connect_opened", false);
   }
   if (dateFrom) {
     agentsQuery = agentsQuery.gte("created_at", `${dateFrom}T00:00:00.000Z`);
@@ -158,6 +172,7 @@ export default async function AgentsPage({ searchParams }: AgentsPageProps) {
         dateTo={dateTo}
         townFilter={townFilter}
         townOptions={townOptions}
+        connectFilter={connectFilter}
       />
     </div>
   );
