@@ -1,0 +1,43 @@
+{
+  "id": "wam-attachment-adapter",
+  "name": "WAM Attachment Capability Adapter",
+  "description": "v0.2.2 plugin-only sequence binding on stock OpenClaw 2026.7.1-2; wrappers always catalogued; execute late-claims after bounded wait. Requires MCP >=0.1.18 and tools.alsoAllow wrappers.",
+  "version": "0.2.2",
+  "contracts": {
+    "tools": [
+      "inspect_current_business_document",
+      "parse_current_document_customers",
+      "reconcile_current_document_customers"
+    ]
+  },
+  "toolMetadata": {
+    "inspect_current_business_document": {
+      "optional": true,
+      "profiles": ["messaging", "full"]
+    },
+    "parse_current_document_customers": {
+      "optional": true,
+      "profiles": ["messaging", "full"]
+    },
+    "reconcile_current_document_customers": {
+      "optional": true,
+      "profiles": ["messaging", "full"]
+    }
+  },
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "agentId": {
+        "type": "string"
+      },
+      "mcpPackageMinVersion": {
+        "type": "string",
+        "const": "0.1.18"
+      }
+    }
+  }
+}

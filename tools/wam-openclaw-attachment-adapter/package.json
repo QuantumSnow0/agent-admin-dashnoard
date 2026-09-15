@@ -1,0 +1,54 @@
+{
+  "name": "wam-openclaw-attachment-adapter",
+  "version": "0.2.2",
+  "private": true,
+  "description": "OpenClaw host adapter v0.2.2: always-catalogued pathless wrappers with bounded wait + late-claim for stock OpenClaw instruction MR race",
+  "type": "module",
+  "main": "dist/index.js",
+  "files": [
+    "dist/**",
+    "openclaw.plugin.json",
+    "fixtures/**",
+    "patches/PLUGIN-ONLY-SEQUENCE-BINDING.md",
+    "patches/live-hook-preflight-procedure.md",
+    "README.md",
+    "wam-openclaw-attachment-adapter-runbook.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.7.1"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
+  "openclaw": {
+    "extensions": [
+      "./dist/index.js"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.7.1",
+      "minGatewayVersion": "2026.7.1"
+    },
+    "build": {
+      "openclawVersion": "2026.7.1-2"
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "openclaw": "^2026.7.1-2",
+    "typescript": "^5.8.0",
+    "vitest": "^3.2.0"
+  }
+}

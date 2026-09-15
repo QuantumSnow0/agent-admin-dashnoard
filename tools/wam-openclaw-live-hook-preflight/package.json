@@ -1,0 +1,48 @@
+{
+  "name": "wam-openclaw-live-hook-preflight",
+  "version": "0.1.2",
+  "private": true,
+  "description": "Read-only OpenClaw 2026.7.1-2 live-hook presence preflight for adapter v0.1.3 two-message design. Preserves qualifying file snapshot across text follow-ups. Requires explicit operator enablement.",
+  "type": "module",
+  "main": "dist/index.js",
+  "files": [
+    "dist/**",
+    "openclaw.plugin.json",
+    "README.md",
+    "INSTALL.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.7.1"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
+  "openclaw": {
+    "extensions": [
+      "./dist/index.js"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.7.1",
+      "minGatewayVersion": "2026.7.1"
+    },
+    "build": {
+      "openclawVersion": "2026.7.1-2"
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "openclaw": "^2026.7.1-2",
+    "typescript": "^5.8.0",
+    "vitest": "^3.2.0"
+  }
+}

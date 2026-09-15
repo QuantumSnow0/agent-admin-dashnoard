@@ -1,0 +1,44 @@
+WAM OpenClaw Attachment Capability Adapter — review/source archive
+Version: 0.1.1
+Created: 2026-09-03
+Archive: docs/wam-openclaw-attachment-adapter-0.1.1-review-source.tar.gz
+Size_bytes: 98708
+Size_KB: 96.39
+SHA256: 15B60A1EE6438B1697E00A93BC0006549561AC4F39F5F9F983A76775C12B2BCB
+
+Also (npm pack runtime artifact): docs/wam-openclaw-attachment-adapter-0.1.1.tgz
+(prior SHA256 605BA4B2B64A4D2107FCEF0F13AF37ED7B149679A1609B8C9436E4E9DD8B0F1F — unchanged runtime)
+
+Supersedes: v0.1.0 (NO-GO — mock bridge default, one-use-after-inspect, fail-open mint, stale race)
+
+Pairs with: wam-apps-ai-mcp v0.1.18
+OpenClaw version guard: 2026.7.1-2 (OPENCLAW_VERSION env required persistently)
+
+Review/source archive contents:
+- src/
+- tests/
+- package.json, package-lock.json
+- tsconfig.json, vitest.config.ts
+- openclaw.plugin.json
+- README.md + wam-openclaw-attachment-adapter-runbook.md
+- patches/await-message-received.md
+- patches/live-hook-preflight-procedure.md
+- PACKAGE-MANIFEST-openclaw-attachment-adapter.txt
+- compiled dist/ (includes live-hook-preflight.js)
+
+Read-only live-hook preflight (OpenClaw 2026.7.1-2):
+- src/live-hook-preflight.ts — presence/name logging only
+- Fields: update_id, file_unique_id, runId, messageId, sessionKey, accountId, peerId, senderId
+- Hooks: message_received, before_prompt_build, before_tool_call
+- Never logs values, paths, message content, file names, IDs, or document contents
+- Does NOT modify reviewed adapter runtime registration (registerAttachmentAdapter)
+
+Verification (fresh temporary extraction; VPS not touched):
+- npm ci PASS
+- npm run typecheck PASS
+- npm run build PASS
+- npm test: 24 passed (3 files) — includes live-hook-preflight tests
+
+LOCAL GO: adapter review/source package + live-hook preflight procedure.
+Production deploy: NOT authorized in this pass.
+Runtime logic: unchanged from accepted v0.1.1 (preflight is additive/separate).

@@ -1,0 +1,37 @@
+WAM APPS AI MCP Phase 1A.9 visit_date dual-format remediation package
+Version: 0.1.21
+Created: 2026-09-12
+Archive: docs/wam-apps-ai-mcp-phase1a9-visit-date-remediation-clean.tar.gz
+Archive_checksum_file: docs/wam-apps-ai-mcp-phase1a9-visit-date-remediation-clean.tar.gz.sha256
+
+Internal checksums: PACKAGE-FILE-CHECKSUMS.txt (packaged files only; not the archive).
+
+Includes:
+- PACKAGE-FILE-CHECKSUMS.txt
+- PACKAGE-MANIFEST-phase1a9.txt
+- wam-ai-phase1a9-implementation.md
+- wam-ai-phase1a9-deployment-runbook.md (current containment + v0.1.21 deploy sequence)
+- wam-ai-phase1a9-sql-transport-remediation.md
+- wam-ai-phase1a9-visit-date-remediation.md
+- compiled dist/
+- migrations including:
+  - 20260910120000_wam_ai_phase1a9_semantic_query.sql
+  - 20260912120000_wam_ai_phase1a9_visit_date_dual_format.sql (forward-only)
+- scripts/ production + disposable Phase 1A.9 verifiers / privilege matrix / visit-date pre-post
+- vitest.config.ts + vitest.integration.config.ts
+- tests including phase1a9-* and integration/phase1a9-query.integration.test.ts
+
+Visit_date parsing (CR TEXT):
+- M/d/yyyy (1–2 digit month/day) and ISO YYYY-MM-DD
+- Strict calendar validation; fail-closed; never substitute created_at
+- JSONB EXECUTE … USING binds preserved (no %L / quote_literal / VARIADIC)
+
+Production deploy note:
+- 20260910120000 already installed; apply only 20260912120000
+- Keep wam.business.query.* disabled until MCP v0.1.21 + read-only smoke pass
+
+Tests:
+- npm test — expected full unit suite pass without PostgreSQL
+- npm run test:integration — disposable PostgreSQL; Phase 1A.9 non-skipped
+
+Production deploy: NOT authorized in this packaging pass.

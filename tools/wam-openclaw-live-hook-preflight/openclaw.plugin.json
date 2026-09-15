@@ -1,0 +1,17 @@
+{
+  "id": "wam-live-hook-preflight",
+  "name": "WAM Live-Hook Preflight (read-only)",
+  "description": "Presence-only probes for message_received / before_prompt_build / before_tool_call. No attachment capture, MCP, tools, or database. Requires WAM_LIVE_HOOK_PREFLIGHT_ENABLED=1 and OpenClaw 2026.7.1-2.",
+  "version": "0.1.2",
+  "contracts": {
+    "tools": []
+  },
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}
