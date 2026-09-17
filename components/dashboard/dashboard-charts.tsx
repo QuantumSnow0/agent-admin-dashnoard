@@ -61,7 +61,11 @@ function TopAgentsBarChart({
         </div>
       ) : (
         <div className="h-80">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer
+            width="100%"
+            height="100%"
+            initialDimension={{ width: 1, height: 1 }}
+          >
             <BarChart
               data={data}
               layout="vertical"
@@ -156,7 +160,11 @@ export function DashboardCharts({ chartDataByRange }: DashboardChartsProps) {
             Registrations (last {range} days)
           </h3>
           <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer
+              width="100%"
+              height="100%"
+              initialDimension={{ width: 1, height: 1 }}
+            >
               <AreaChart data={registrationsByDay} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <defs>
                   <linearGradient id="fillRegistrations" x1="0" y1="0" x2="0" y2="1">
@@ -189,7 +197,11 @@ export function DashboardCharts({ chartDataByRange }: DashboardChartsProps) {
             Commission earned (last {range} days)
           </h3>
           <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer
+              width="100%"
+              height="100%"
+              initialDimension={{ width: 1, height: 1 }}
+            >
               <BarChart data={revenueByDay} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-gray-100" />
                 <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="#9ca3af" />
@@ -227,7 +239,11 @@ export function DashboardCharts({ chartDataByRange }: DashboardChartsProps) {
             Installed mix (last {range} days)
           </h3>
           <div className="mx-auto h-64 max-w-sm">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer
+              width="100%"
+              height="100%"
+              initialDimension={{ width: 1, height: 1 }}
+            >
               <PieChart>
                 <Pie
                   data={packageMix}

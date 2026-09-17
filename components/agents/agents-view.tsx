@@ -2,12 +2,14 @@
 
 import { useCallback } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users, CheckCircle2, Clock, XCircle, Ban, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { AgentActions } from "@/components/agents/agent-actions";
 import { AgentRatingStars } from "@/components/agents/agent-rating-stars";
 import { useDebouncedSearchParam } from "@/lib/hooks/use-debounced-search-param";
+import { AGENT_FILTER_KEYS } from "@/lib/agent-filters";
+import { AgentFilterBuilder } from "@/app/dashboard/agents/agent-filter-builder";
 
 const baseHref = "/dashboard/agents";
 
@@ -32,8 +34,6 @@ type AgentRow = {
   } | null;
 };
 
-type ConnectFilter = "" | "opened" | "not_opened";
-
 const agentCards: { title: string; icon: typeof Users; cardBg: string; filter: AgentStatus }[] = [
   { title: "Registered", icon: Users, cardBg: "bg-indigo-600", filter: "all" },
   { title: "Approved", icon: CheckCircle2, cardBg: "bg-green-600", filter: "approved" },
@@ -51,11 +51,8 @@ interface AgentsViewProps {
   totalFiltered: number;
   pageSize: number;
   searchQuery: string;
-  dateFrom: string;
-  dateTo: string;
-  townFilter: string;
   townOptions: string[];
-  connectFilter: ConnectFilter;
+  areaOptions: string[];
 }
 
 export function AgentsView({
@@ -67,95 +64,60 @@ export function AgentsView({
   totalFiltered,
   pageSize,
   searchQuery,
-  dateFrom,
-  dateTo,
-  townFilter,
   townOptions,
-  connectFilter,
+  areaOptions,
 }: AgentsViewProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const getValue = (f: AgentStatus) =>
     f === "all" ? counts.registered : counts[f];
 
-  const applyFilters = useCallback(
-    (
-      q: string,
-      from: string,
-      to: string,
-      town: string,
-      connect: string,
-      page = 1,
-    ) => {
-      const params = new URLSearchParams();
-      if (currentFilter !== "all") params.set("status", currentFilter);
-      if (q.trim()) params.set("q", q.trim());
-      if (from) params.set("from", from);
-      if (to) params.set("to", to);
-      if (town.trim()) params.set("town", town.trim());
-      if (connect === "opened" || connect === "not_opened") {
-        params.set("connect", connect);
+  const commitSearchQuery = useCallback(
+    (q: string) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (q.trim()) {
+        params.set("q", q.trim());
+      } else {
+        params.delete("q");
       }
-      if (page > 1) params.set("page", String(page));
+      params.delete("page");
       const query = params.toString();
       router.replace(query ? `${baseHref}?${query}` : baseHref, { scroll: false });
     },
-    [currentFilter, router]
+    [router, searchParams]
   );
 
-  const commitSearchQuery = useCallback(
-    (q: string) => {
-      applyFilters(q, dateFrom, dateTo, townFilter, connectFilter, 1);
-    },
-    [applyFilters, dateFrom, dateTo, townFilter, connectFilter]
-  );
-
-  const { searchInput, searchField } = useDebouncedSearchParam(
+  const { searchField } = useDebouncedSearchParam(
     searchQuery,
     commitSearchQuery
   );
 
-  const handleDateFromChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    applyFilters(searchInput, e.target.value, dateTo, townFilter, connectFilter, 1);
-  };
-  const handleDateToChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    applyFilters(searchInput, dateFrom, e.target.value, townFilter, connectFilter, 1);
-  };
-  const handleTownChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    applyFilters(searchInput, dateFrom, dateTo, e.target.value, connectFilter, 1);
-  };
-  const handleConnectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    applyFilters(searchInput, dateFrom, dateTo, townFilter, e.target.value, 1);
-  };
-
   const from = totalFiltered === 0 ? 0 : (currentPage - 1) * pageSize + 1;
   const to = Math.min(currentPage * pageSize, totalFiltered);
 
-  const params = new URLSearchParams();
-  if (currentFilter !== "all") params.set("status", currentFilter);
-  if (searchQuery) params.set("q", searchQuery);
-  if (dateFrom) params.set("from", dateFrom);
-  if (dateTo) params.set("to", dateTo);
-  if (townFilter) params.set("town", townFilter);
-  if (connectFilter) params.set("connect", connectFilter);
+  const params = new URLSearchParams(searchParams.toString());
+  params.delete("page");
   const queryString = params.toString();
   const pageQuery = (p: number) => (queryString ? `${queryString}&page=${p}` : `page=${p}`);
-  const clearHref = currentFilter === "all" ? baseHref : `${baseHref}?status=${currentFilter}`;
+  const statusValues = searchParams.getAll("status");
   const hasFilters =
-    !!searchQuery || !!dateFrom || !!dateTo || !!townFilter || !!connectFilter;
+    !!searchQuery ||
+    !!searchParams.get("from") ||
+    !!searchParams.get("to") ||
+    AGENT_FILTER_KEYS.some((key) => searchParams.has(key));
 
   return (
     <>
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-5">
         {agentCards.map(({ title, icon: Icon, cardBg, filter: cardFilter }) => {
-          const isActive = currentFilter === cardFilter;
-          const cardParams = new URLSearchParams();
+          const isActive =
+            cardFilter === "all"
+              ? statusValues.length === 0
+              : statusValues.length === 1 && statusValues[0] === cardFilter;
+          const cardParams = new URLSearchParams(searchParams.toString());
+          cardParams.delete("status");
+          cardParams.delete("page");
           if (cardFilter !== "all") cardParams.set("status", cardFilter);
-          if (searchQuery) cardParams.set("q", searchQuery);
-          if (dateFrom) cardParams.set("from", dateFrom);
-          if (dateTo) cardParams.set("to", dateTo);
-          if (townFilter) cardParams.set("town", townFilter);
-          if (connectFilter) cardParams.set("connect", connectFilter);
-          cardParams.set("page", "1");
           const href = cardParams.toString() ? `${baseHref}?${cardParams.toString()}` : baseHref;
           return (
             <Link key={title} href={href}>
@@ -180,6 +142,8 @@ export function AgentsView({
         })}
       </div>
 
+      <AgentFilterBuilder towns={townOptions} areas={areaOptions} />
+
       <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-gray-50/50 px-3 py-2">
         <Search className="h-4 w-4 shrink-0 text-gray-400" />
         <input
@@ -189,58 +153,25 @@ export function AgentsView({
           className="h-8 w-40 shrink-0 rounded border border-gray-200 bg-white px-2.5 text-sm placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 sm:w-52"
           aria-label="Search agents"
         />
-        <select
-          value={townFilter}
-          onChange={handleTownChange}
-          className="h-8 max-w-[10rem] shrink-0 rounded border border-gray-200 bg-white px-2.5 text-sm text-gray-700 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 sm:max-w-[14rem]"
-          aria-label="Filter by town"
-        >
-          <option value="">All towns</option>
-          {townOptions.map((town) => (
-            <option key={town} value={town}>
-              {town}
-            </option>
-          ))}
-        </select>
-        <select
-          value={connectFilter}
-          onChange={handleConnectChange}
-          className="h-8 shrink-0 rounded border border-gray-200 bg-white px-2.5 text-sm text-gray-700 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-          aria-label="Filter by Airtel Connect account"
-        >
-          <option value="">All Connect</option>
-          <option value="opened">Connect opened</option>
-          <option value="not_opened">Connect not opened</option>
-        </select>
-        <input
-          type="date"
-          value={dateFrom}
-          onChange={handleDateFromChange}
-          className="h-8 w-32 shrink-0 rounded border border-gray-200 bg-white px-2.5 text-sm text-gray-600 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-          aria-label="From date"
-        />
-        <span className="text-xs text-gray-400">–</span>
-        <input
-          type="date"
-          value={dateTo}
-          onChange={handleDateToChange}
-          className="h-8 w-32 shrink-0 rounded border border-gray-200 bg-white px-2.5 text-sm text-gray-600 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-          aria-label="To date"
-        />
-        {hasFilters && (
-          <Link
-            href={clearHref}
+        {!!searchQuery && (
+          <button
+            type="button"
+            onClick={() => commitSearchQuery("")}
             className="inline-flex h-8 items-center rounded border border-gray-200 bg-white px-3 text-sm text-gray-600 hover:bg-gray-50"
           >
-            Clear
-          </Link>
+            Clear search
+          </button>
         )}
       </div>
 
       <div className="space-y-1">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500">
-            {currentFilter === "all" ? "All agents" : `${currentFilter} agents`}
+            {statusValues.length > 1
+              ? "Filtered agents"
+              : currentFilter === "all"
+                ? "All agents"
+                : `${currentFilter} agents`}
           </h2>
           {totalFiltered > 0 && (
             <span className="text-xs text-gray-500">
@@ -251,7 +182,7 @@ export function AgentsView({
         {!agentsList.length ? (
           <div className="rounded-xl border border-gray-200 bg-gray-50/50 py-12 text-center text-gray-500">
             {hasFilters
-              ? "No agents match your search, town, Connect, or date filter."
+              ? "No agents match the selected filters."
               : currentFilter === "all"
                 ? "No agents yet."
                 : `No ${currentFilter} agents.`}

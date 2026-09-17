@@ -62,7 +62,11 @@ export function AppRatingsChart({ summary }: AppRatingsChartProps) {
         </div>
       ) : (
         <div className="h-72">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer
+            width="100%"
+            height="100%"
+            initialDimension={{ width: 1, height: 1 }}
+          >
             <BarChart
               data={distribution}
               margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
