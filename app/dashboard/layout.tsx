@@ -101,11 +101,11 @@ export default async function DashboardLayout({
           <div className="flex h-16 items-center border-b px-6">
             <div className="flex items-center space-x-2">
   
-                <Image src={"/logo.png"} alt="wam app logo" height={52} width={52}/>
+                <Image src={"/logo.png"} alt="WAM Apps logo" height={52} width={52}/>
               
               <div>
                 <h1 className="text-lg font-bold text-gray-900">
-                  Airtel Agents
+                  WAM Apps
                 </h1>
                 <p className="text-xs text-gray-500">Admin Dashboard</p>
               </div>

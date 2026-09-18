@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Airtel Agents - Admin Dashboard",
-  description: "Admin dashboard for managing Airtel SmartConnect agents and registrations",
+  title: "WAM Apps - Admin Dashboard",
+  description: "Admin dashboard for managing WAM Apps agents and registrations",
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "any" },

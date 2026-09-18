@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -14,17 +14,16 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Check for error message from URL params (e.g., from middleware redirect)
-  useEffect(() => {
+  const [error, setError] = useState<string | null>(() => {
     const errorParam = searchParams.get("error");
     if (errorParam === "admin_access_required") {
-      setError("Admin access required. Please log in with an admin account.");
-    } else if (errorParam === "super_admin_access_required") {
-      setError("Super admin access required.");
+      return "Admin access required. Please log in with an admin account.";
     }
-  }, [searchParams]);
+    if (errorParam === "super_admin_access_required") {
+      return "Super admin access required.";
+    }
+    return null;
+  });
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -116,10 +115,10 @@ export default function LoginPage() {
         {/* Logo/Brand */}
         <div className="mb-8 text-center">
           <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-600 shadow-lg">
-            <span className="text-2xl font-bold text-white">A</span>
+            <span className="text-2xl font-bold text-white">W</span>
           </div>
           <h1 className="mt-4 text-3xl font-bold text-gray-900">
-            Airtel Agents
+            WAM Apps
           </h1>
           <p className="mt-2 text-sm text-gray-600">Admin Dashboard</p>
         </div>
@@ -138,7 +137,7 @@ export default function LoginPage() {
                 <Input
                   id="email"
                   type="email"
-                  placeholder="admin@airtel.com"
+                  placeholder="admin@wamapps.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
@@ -173,7 +172,7 @@ export default function LoginPage() {
         </Card>
 
         <p className="mt-6 text-center text-xs text-gray-500">
-          © 2024 Airtel Kenya. All rights reserved.
+          © WAM Apps. All rights reserved.
         </p>
       </div>
     </div>

@@ -18,7 +18,7 @@ This means:
 3. Navigate to **Authentication** → **Users**
 4. Click **"Add user"** or **"Invite user"**
 5. Fill in:
-   - **Email**: `admin@airtel.com` (or your admin email)
+   - **Email**: `admin@wamapps.com` (or your admin email)
    - **Password**: Create a strong password
    - **Auto Confirm User**: ✅ Check this (skip email verification)
 6. Click **"Create user"**
@@ -27,7 +27,7 @@ This means:
 
 1. Go to your admin dashboard login page
 2. Use the credentials you just created:
-   - **Email**: `admin@airtel.com`
+   - **Email**: `admin@wamapps.com`
    - **Password**: The password you set
 
 ### Step 3: (Optional) Create Admin User via SQL
@@ -35,7 +35,7 @@ This means:
 You can also create an admin user directly via SQL:
 
 ```sql
--- This will create a user with email: admin@airtel.com
+-- This will create a user with email: admin@wamapps.com
 -- Password will need to be set via dashboard or auth.users table
 INSERT INTO auth.users (
   instance_id,
@@ -58,7 +58,7 @@ VALUES (
   gen_random_uuid(),
   'authenticated',
   'authenticated',
-  'admin@airtel.com',
+  'admin@wamapps.com',
   crypt('your-password-here', gen_salt('bf')), -- Replace with actual password
   NOW(),
   NOW(),
@@ -88,7 +88,7 @@ ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE;
 -- Set specific user(s) as admin
 UPDATE agents
 SET is_admin = TRUE
-WHERE email = 'admin@airtel.com';
+WHERE email = 'admin@wamapps.com';
 ```
 
 2. **Update middleware to check admin role**:
@@ -153,7 +153,7 @@ CREATE TABLE IF NOT EXISTS admin_users (
 INSERT INTO admin_users (id, email)
 SELECT id, email
 FROM auth.users
-WHERE email = 'admin@airtel.com';
+WHERE email = 'admin@wamapps.com';
 ```
 
 2. **Check admin_users table in middleware**
@@ -175,7 +175,7 @@ To add multiple admins:
 ```sql
 UPDATE agents
 SET is_admin = TRUE
-WHERE email IN ('admin@airtel.com', 'admin2@airtel.com', 'supervisor@airtel.com');
+WHERE email IN ('admin@wamapps.com', 'admin2@wamapps.com', 'supervisor@wamapps.com');
 ```
 
 ## Security Recommendations

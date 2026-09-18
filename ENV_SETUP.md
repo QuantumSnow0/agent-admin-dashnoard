@@ -19,7 +19,7 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key-here
 
 1. Visit [https://app.supabase.com](https://app.supabase.com)
 2. Log in to your account
-3. Select your Airtel Agents project (or create a new one)
+3. Select your WAM Apps project (or create a new one)
 
 ### Step 2: Get Project URL and Anon Key
 

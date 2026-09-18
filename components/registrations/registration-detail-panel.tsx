@@ -236,8 +236,8 @@ export function RegistrationDetailPanel({ registration, open, onClose }: Registr
                       label="Entry path"
                       value={
                         registration.airtel_connect_entry === "connect_first"
-                          ? "Airtel Connect → WAM"
-                          : "WAM → Airtel Connect"
+                          ? "Airtel Connect → WAM Apps"
+                          : "WAM Apps → Airtel Connect"
                       }
                     />
                     <Field

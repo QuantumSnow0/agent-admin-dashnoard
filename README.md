@@ -1,6 +1,6 @@
-# Airtel Agents - Admin Dashboard
+# WAM Apps - Admin Dashboard
 
-Admin dashboard for managing Airtel SmartConnect agents and customer registrations.
+Admin dashboard for managing WAM Apps agents and customer registrations.
 
 ## Tech Stack
 
@@ -122,4 +122,4 @@ npx shadcn@latest add [component-name]
 
 ## License
 
-Private - Airtel Kenya
+Private - WAM Apps

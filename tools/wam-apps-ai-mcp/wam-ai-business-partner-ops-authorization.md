@@ -47,7 +47,7 @@
 - OpenClaw config, plugin/agent admin, Telegram pairing admin
 - VPS/systemd/server admin
 - Airtel/Kenya Internet force-unavailable
-- WAM Agents super-admin capabilities
+- WAM Apps super-admin capabilities
 - Arbitrary-recipient or broadcast messaging
 
 ## Local verification evidence (fixtures/mocks only)

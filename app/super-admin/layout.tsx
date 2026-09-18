@@ -33,7 +33,7 @@ export default async function SuperAdminLayout({
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <div>
             <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
-              Operations
+              WAM Apps
             </p>
             <h1 className="text-lg font-semibold text-white">Super Admin</h1>
           </div>

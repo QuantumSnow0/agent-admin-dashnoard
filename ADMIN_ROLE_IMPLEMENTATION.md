@@ -33,7 +33,7 @@ Admin role checking has been implemented in the admin dashboard.
 -- Grant admin access to a specific email
 UPDATE agents
 SET is_admin = TRUE
-WHERE email = 'admin@airtel.com';
+WHERE email = 'admin@wamapps.com';
 ```
 
 3. Verify the update:
@@ -41,7 +41,7 @@ WHERE email = 'admin@airtel.com';
 -- Check admin status
 SELECT id, email, name, is_admin
 FROM agents
-WHERE email = 'admin@airtel.com';
+WHERE email = 'admin@wamapps.com';
 ```
 
 ### Option 2: Via Supabase Dashboard
@@ -58,9 +58,9 @@ WHERE email = 'admin@airtel.com';
 UPDATE agents
 SET is_admin = TRUE
 WHERE email IN (
-  'admin@airtel.com',
-  'admin2@airtel.com',
-  'supervisor@airtel.com'
+  'admin@wamapps.com',
+  'admin2@wamapps.com',
+  'supervisor@wamapps.com'
 );
 ```
 
@@ -160,7 +160,7 @@ If you have an existing Supabase database:
 ```sql
 UPDATE agents
 SET is_admin = TRUE
-WHERE email = 'admin@airtel.com';
+WHERE email = 'admin@wamapps.com';
 ```
 
 3. **Restart your admin dashboard**:
