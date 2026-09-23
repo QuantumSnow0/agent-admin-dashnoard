@@ -1,5 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
+import { requireDashboardAdmin } from "@/lib/utils/admin";
 import { Bell } from "lucide-react";
 import { SendNotificationClient } from "@/components/notifications/send-notification-client";
 
@@ -10,27 +9,9 @@ interface SendNotificationPageProps {
 export default async function SendNotificationPage({
   searchParams,
 }: SendNotificationPageProps) {
-  const supabase = await createClient();
+  const { supabase } = await requireDashboardAdmin();
   const params = await searchParams;
   const initialAgentId = params.agentId ?? null;
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login?error=not_authenticated");
-  }
-
-  const { data: currentUser } = await supabase
-    .from("agents")
-    .select("is_admin")
-    .eq("id", user.id)
-    .single();
-
-  if (!currentUser?.is_admin) {
-    redirect("/login?error=admin_access_required");
-  }
 
   const { data: agents } = await supabase
     .from("agents")

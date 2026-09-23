@@ -25,6 +25,28 @@ export function AgentWorkingPlaceControl({
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
+  const clearPin = async () => {
+    setSaving(true);
+    setMessage(null);
+    try {
+      const res = await fetch(`/api/admin/agents/${agentId}/working-place`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ place: null }),
+      });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Failed to delete pin");
+      setPlace(null);
+      setPending(null);
+      setMessage("Working pin removed.");
+      router.refresh();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Failed to delete pin");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const save = async (next: AdminGooglePlace) => {
     setSaving(true);
     setMessage(null);
@@ -53,8 +75,9 @@ export function AgentWorkingPlaceControl({
         Working location pin
       </Label>
       <p className="mt-1 text-sm text-gray-600">
-        Matching uses this Google pin against the customer pin. Search and pick a
-        real landmark — not a city or county.
+        Home pin for this agent. If they have no coverage zones, matching uses
+        this pin plus the service radius. Search and pick a real landmark — not a
+        city or county.
       </p>
 
       {place ? (
@@ -96,6 +119,19 @@ export function AgentWorkingPlaceControl({
             {saving ? "Saving…" : "Save pin"}
           </Button>
         </div>
+      ) : null}
+
+      {place && !pending ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="mt-3"
+          disabled={saving}
+          onClick={() => void clearPin()}
+        >
+          Delete working pin
+        </Button>
       ) : null}
 
       {message ? <p className="mt-2 text-sm text-gray-600">{message}</p> : null}

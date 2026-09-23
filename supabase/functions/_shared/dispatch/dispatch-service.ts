@@ -20,6 +20,7 @@ import {
   rankFallbackAgents,
   resolveLeadPoint,
   type AgentCandidate,
+  type CoverageZone,
   type LocationRef,
   type RankedAgent,
 } from "./matching.ts";
@@ -31,18 +32,25 @@ type DispatchConfig = {
   max_open_leads_enabled: boolean;
   online_presence_minutes: number;
   default_service_radius_km: number;
+  overlap_daily_accept_cap: number;
 };
 
 export async function loadDispatchConfig(
   service: SupabaseClient,
 ): Promise<DispatchConfig> {
-  const { data } = await service
-    .from("dispatch_config")
-    .select(
-      "dispatch_enabled, offer_timeout_minutes, max_open_leads_per_agent, max_open_leads_enabled, online_presence_minutes, default_service_radius_km",
-    )
-    .limit(1)
-    .maybeSingle();
+  const columns =
+    "dispatch_enabled, offer_timeout_minutes, max_open_leads_per_agent, max_open_leads_enabled, online_presence_minutes, default_service_radius_km, overlap_daily_accept_cap";
+  let { data } = await service.from("dispatch_config").select(columns).limit(1).maybeSingle();
+  if (!data) {
+    const retry = await service
+      .from("dispatch_config")
+      .select(
+        "dispatch_enabled, offer_timeout_minutes, max_open_leads_per_agent, max_open_leads_enabled, online_presence_minutes, default_service_radius_km",
+      )
+      .limit(1)
+      .maybeSingle();
+    data = retry.data;
+  }
 
   const radius = Number(data?.default_service_radius_km);
   return {
@@ -58,6 +66,9 @@ export async function loadDispatchConfig(
     default_service_radius_km: Number.isFinite(radius) && radius > 0
       ? radius
       : DISPATCH_DEFAULTS.defaultServiceRadiusKm,
+    overlap_daily_accept_cap: Number.isFinite(Number(data?.overlap_daily_accept_cap))
+      ? Number(data?.overlap_daily_accept_cap)
+      : DISPATCH_DEFAULTS.overlapDailyAcceptCap,
   };
 }
 
@@ -98,14 +109,45 @@ async function loadEligibleAgents(
   const ids = (agents ?? []).map((a) => a.id);
   if (ids.length === 0) return [];
 
-  const { data: settings } = await service
+  let { data: settings, error: settingsError } = await service
     .from("agent_dispatch_settings")
-    .select("agent_id, is_available, county, last_seen_at, service_radius_km")
+    .select("agent_id, is_available, county, last_seen_at, service_radius_km, pin_coverage_priority")
     .in("agent_id", ids);
+  if (settingsError) {
+    const retry = await service
+      .from("agent_dispatch_settings")
+      .select("agent_id, is_available, county, last_seen_at, service_radius_km")
+      .in("agent_id", ids);
+    settings = retry.data;
+  }
+
+  const [{ data: zoneRows }, acceptCounts] = await Promise.all([
+    service
+      .from("agent_coverage_zones")
+      .select("id, agent_id, name, latitude, longitude, radius_km, priority")
+      .in("agent_id", ids)
+      .then((res) => (res.error ? { data: [] as typeof res.data } : res)),
+    loadAcceptCounts24h(service),
+  ]);
 
   const settingsMap = new Map(
     (settings ?? []).map((s) => [s.agent_id, s]),
   );
+  const zonesByAgent = new Map<string, CoverageZone[]>();
+  for (const row of zoneRows ?? []) {
+    const zone: CoverageZone = {
+      id: String(row.id),
+      agent_id: String(row.agent_id),
+      name: String(row.name ?? ""),
+      latitude: Number(row.latitude),
+      longitude: Number(row.longitude),
+      radius_km: Number(row.radius_km),
+      priority: Number(row.priority ?? 1),
+    };
+    const list = zonesByAgent.get(zone.agent_id) ?? [];
+    list.push(zone);
+    zonesByAgent.set(zone.agent_id, list);
+  }
 
   return (agents ?? []).map((a) => {
     const s = settingsMap.get(a.id);
@@ -122,8 +164,30 @@ async function loadEligibleAgents(
       working_place: a.working_place ?? null,
       service_radius_km:
         s?.service_radius_km != null ? Number(s.service_radius_km) : null,
+      coverage_zones: zonesByAgent.get(a.id) ?? [],
+      pin_coverage_priority:
+        s?.pin_coverage_priority != null ? Number(s.pin_coverage_priority) : null,
+      accepts_last_24h: acceptCounts.get(a.id) ?? 0,
     };
   });
+}
+
+async function loadAcceptCounts24h(
+  service: SupabaseClient,
+): Promise<Map<string, number>> {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { data } = await service
+    .from("lead_offers")
+    .select("agent_id")
+    .eq("status", "accepted")
+    .gte("responded_at", since);
+
+  const counts = new Map<string, number>();
+  for (const row of data ?? []) {
+    const id = row.agent_id as string;
+    counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+  return counts;
 }
 
 /**
@@ -252,6 +316,7 @@ export async function dispatchLead(
           ...preferred,
           distance_km: pinKm ?? 99999,
           radius_km: effectiveRadiusKm(preferred, defaultRadiusKm),
+          coverage_priority: 1,
         };
         offeredAsPreferred = true;
       }
@@ -271,6 +336,7 @@ export async function dispatchLead(
       maxOpenLeads,
       config.online_presence_minutes,
       defaultRadiusKm,
+      config.overlap_daily_accept_cap,
     ).filter((a) => !excluded.has(a.agent_id));
 
     next = ranked[0] ?? null;

@@ -1,6 +1,5 @@
-import { createClient } from "@/lib/supabase/server";
 import Image from "next/image";
-import { redirect } from "next/navigation";
+import { requireDashboardAdmin } from "@/lib/utils/admin";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Clock, FileText, CheckCircle2, Users } from "lucide-react";
 import { subDays } from "date-fns";
@@ -21,25 +20,7 @@ import {
 import { fetchCommissionRates } from "@/lib/agent-wallet";
 
 export default async function DashboardPage() {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login?error=not_authenticated");
-  }
-
-  const { data: agent } = await supabase
-    .from("agents")
-    .select("is_admin, name, email")
-    .eq("id", user.id)
-    .single();
-
-  if (!agent || !agent.is_admin) {
-    redirect("/login?error=admin_access_required");
-  }
+  const { supabase } = await requireDashboardAdmin();
 
   const thirtyDaysAgo = subDays(new Date(), 30).toISOString();
 

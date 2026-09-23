@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { saveAgentsListReturn } from "@/lib/agents-list-return";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users, CheckCircle2, Clock, XCircle, Ban, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { AgentActions } from "@/components/agents/agent-actions";
@@ -27,6 +28,7 @@ type AgentRow = {
   created_at: string | null;
   airtel_connect_opened?: boolean | null;
   airtel_connect_opened_at?: string | null;
+  lead_dispatch_scope?: string | null;
   app_rating?: {
     score: number;
     created_at: string;
@@ -69,6 +71,10 @@ export function AgentsView({
 }: AgentsViewProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+
+  useEffect(() => {
+    saveAgentsListReturn(searchParams.toString());
+  }, [searchParams]);
   const getValue = (f: AgentStatus) =>
     f === "all" ? counts.registered : counts[f];
 
@@ -250,6 +256,7 @@ export function AgentsView({
                           email: a.email ?? "",
                           status: a.status,
                           airtel_connect_opened: a.airtel_connect_opened === true,
+                          lead_dispatch_scope: a.lead_dispatch_scope ?? "none",
                         }}
                       />
                     </div>

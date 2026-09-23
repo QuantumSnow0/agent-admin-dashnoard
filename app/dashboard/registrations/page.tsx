@@ -1,5 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
+import { requireDashboardAdmin } from "@/lib/utils/admin";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FileText, Clock, Package, XCircle } from "lucide-react";
 import { REGISTRATION_CLOSED_STATUSES } from "@/lib/registration-statuses";
@@ -29,25 +28,11 @@ const CUSTOMER_SELECT = CUSTOMER_REGISTRATION_ADMIN_SELECT;
 const SAFARICOM_SELECT = SAFARICOM_REGISTRATION_ADMIN_SELECT;
 
 export default async function RegistrationsPage({ searchParams }: RegistrationsPageProps) {
-  const supabase = await createClient();
+  const { supabase } = await requireDashboardAdmin();
   const params = await searchParams;
   const statusFilter = params.status || "all";
   const searchQuery = (params.q ?? "").trim();
   const agentIdFilter = (params.agentId ?? "").trim();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login?error=not_authenticated");
-  }
-
-  const { data: agent } = await supabase.from("agents").select("is_admin").eq("id", user.id).single();
-
-  if (!agent?.is_admin) {
-    redirect("/login?error=admin_access_required");
-  }
 
   let customerQuery = supabase
     .from("customer_registrations")

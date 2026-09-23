@@ -1,6 +1,5 @@
-import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { redirect } from "next/navigation";
+import { requireDashboardAdmin } from "@/lib/utils/admin";
 import Link from "next/link";
 import { FileText, Clock, Package, XCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,25 +17,11 @@ type PageProps = {
 };
 
 export default async function LeadInstallationsPage({ searchParams }: PageProps) {
-  const supabase = await createClient();
+  const { supabase } = await requireDashboardAdmin();
   const params = await searchParams;
   const statusFilter = params.status || "all";
   const searchQuery = (params.q ?? "").trim();
   const agentIdFilter = (params.agentId ?? "").trim();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) redirect("/login?error=not_authenticated");
-
-  const { data: admin } = await supabase
-    .from("agents")
-    .select("is_admin")
-    .eq("id", user.id)
-    .single();
-
-  if (!admin?.is_admin) redirect("/login?error=admin_access_required");
 
   let leads: Awaited<ReturnType<typeof fetchAdminLeadInstallations>>["leads"] =
     [];

@@ -13,6 +13,8 @@ export const DISPATCH_DEFAULTS = {
   defaultServiceRadiusKm: 8,
   minServiceRadiusKm: 0.5,
   maxServiceRadiusKm: 50,
+  pinCoveragePriority: 100,
+  overlapDailyAcceptCap: 5,
 } as const;
 
 export const ACTIVE_LEAD_STATUSES = [

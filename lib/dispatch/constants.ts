@@ -16,6 +16,10 @@ export const DISPATCH_DEFAULTS = {
   defaultServiceRadiusKm: 8,
   minServiceRadiusKm: 0.5,
   maxServiceRadiusKm: 50,
+  /** Pin-only agents use this priority unless admin sets pin_coverage_priority. */
+  pinCoveragePriority: 100,
+  /** Overlap fairness: accepted offers in the last 24h. 0 disables. */
+  overlapDailyAcceptCap: 5,
 } as const;
 
 export const LEAD_SOURCES = [

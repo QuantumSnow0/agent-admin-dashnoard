@@ -1,6 +1,5 @@
-import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { redirect } from "next/navigation";
+import { requireDashboardAdmin } from "@/lib/utils/admin";
 import { LeadsView } from "@/components/leads/leads-view";
 import { DefaultRadiusControl } from "@/components/dispatch/default-radius-control";
 import { LeadGenCommissionControl } from "@/components/dispatch/lead-gen-commission-control";
@@ -18,28 +17,10 @@ type LeadsPageProps = {
 };
 
 export default async function LeadsPage({ searchParams }: LeadsPageProps) {
-  const supabase = await createClient();
+  const { supabase } = await requireDashboardAdmin();
   const params = await searchParams;
   const statusFilter = params.status || "queue";
   const searchQuery = (params.q ?? "").trim();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login?error=not_authenticated");
-  }
-
-  const { data: agent } = await supabase
-    .from("agents")
-    .select("is_admin")
-    .eq("id", user.id)
-    .single();
-
-  if (!agent?.is_admin) {
-    redirect("/login?error=admin_access_required");
-  }
 
   let leads: Awaited<ReturnType<typeof fetchAdminInboundLeads>>["leads"] = [];
   let error: string | null = null;

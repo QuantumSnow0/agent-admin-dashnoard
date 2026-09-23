@@ -1,12 +1,14 @@
-import { createClient } from "@/lib/supabase/server";
-import { redirect, notFound } from "next/navigation";
+import { notFound } from "next/navigation";
+import { requireDashboardAdmin } from "@/lib/utils/admin";
 import Image from "next/image";
 import Link from "next/link";
-import { ChevronLeft, Wallet, TrendingUp, Users, Package, Sparkles, Bell } from "lucide-react";
+import { Wallet, TrendingUp, Users, Package, Sparkles, Bell } from "lucide-react";
+import { AgentsBackLink } from "@/components/agents/agents-back-link";
 import { AgentActions } from "@/components/agents/agent-actions";
 import { AgentDispatchScopeControl } from "@/components/agents/agent-dispatch-scope";
 import { AgentFallbackDispatchControl } from "@/components/agents/agent-fallback-dispatch";
 import { AgentWorkingPlaceControl } from "@/components/agents/agent-working-place";
+import { AgentCoverageZonesControl } from "@/components/agents/agent-coverage-zones";
 import { AgentServiceRadiusControl } from "@/components/agents/agent-service-radius";
 import { AgentRatingStars } from "@/components/agents/agent-rating-stars";
 import { AgentCustomersRegistered } from "@/components/agents/agent-customers-registered";
@@ -40,26 +42,8 @@ const STATUS_STYLES: Record<string, string> = {
 };
 
 export default async function AgentProfilePage({ params }: AgentProfilePageProps) {
-  const supabase = await createClient();
+  const { supabase } = await requireDashboardAdmin();
   const { id } = await params;
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login?error=not_authenticated");
-  }
-
-  const { data: currentUser } = await supabase
-    .from("agents")
-    .select("is_admin")
-    .eq("id", user.id)
-    .single();
-
-  if (!currentUser?.is_admin) {
-    redirect("/login?error=admin_access_required");
-  }
 
   const { data: agent, error } = await supabase
     .from("agents")
@@ -83,6 +67,9 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
     { data: appRating },
     commissionRates,
     inboundLeadsResult,
+    { data: dispatchSettings },
+    { data: dispatchConfig },
+    coverageZonesResult,
   ] = await Promise.all([
     supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("agent_id", id).eq("commission_exempt", false),
     supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }).eq("agent_id", id),
@@ -124,9 +111,6 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
       .maybeSingle(),
     fetchCommissionRates(supabase),
     fetchAdminInboundLeadsForAgent(supabase, id, agent.name),
-  ]);
-
-  const [{ data: dispatchSettings }, { data: dispatchConfig }] = await Promise.all([
     supabase
       .from("agent_dispatch_settings")
       .select("service_radius_km")
@@ -137,7 +121,14 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
       .select("default_service_radius_km")
       .limit(1)
       .maybeSingle(),
+    supabase
+      .from("agent_coverage_zones")
+      .select("id, agent_id, name, place_id, formatted_address, latitude, longitude, radius_km, priority")
+      .eq("agent_id", id)
+      .order("created_at", { ascending: true }),
   ]);
+
+  const coverageZoneRows = coverageZonesResult.error ? [] : coverageZonesResult.data;
 
   const totalRegistrations = (custRegCount ?? 0) + (safRegCount ?? 0);
   const installedPremiumUnits = (airtelInstalledRows ?? [])
@@ -176,13 +167,7 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
 
   return (
     <div className="space-y-4 -ml-2 -mt-6">
-      <Link
-        href="/dashboard/agents"
-        className="inline-flex items-center gap-1 text-sm font-medium text-gray-600 hover:text-gray-900"
-      >
-        <ChevronLeft className="h-4 w-4" />
-        Agents
-      </Link>
+      <AgentsBackLink />
 
       {/* Single compact header – identity + all stats */}
       <header className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
@@ -220,6 +205,7 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
                 name: agent.name ?? undefined,
                 email: agent.email ?? "",
                 status: agent.status,
+                lead_dispatch_scope: agent.lead_dispatch_scope ?? "none",
               }}
             />
           </div>
@@ -308,6 +294,23 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
         agentId={agent.id}
         initialPlace={agent.working_place}
         updatedAt={agent.working_place_updated_at ?? null}
+      />
+
+      <AgentCoverageZonesControl
+        agentId={agent.id}
+        agentName={agent.name || "Unnamed agent"}
+        initialZones={(coverageZoneRows ?? []).map((zone) => ({
+          id: String(zone.id),
+          agent_id: String(zone.agent_id),
+          agent_name: agent.name || "Unnamed agent",
+          name: String(zone.name ?? ""),
+          place_id: zone.place_id ? String(zone.place_id) : null,
+          formatted_address: zone.formatted_address ? String(zone.formatted_address) : null,
+          latitude: Number(zone.latitude),
+          longitude: Number(zone.longitude),
+          radius_km: Number(zone.radius_km),
+          priority: Number(zone.priority ?? 1),
+        }))}
       />
 
       <AgentServiceRadiusControl

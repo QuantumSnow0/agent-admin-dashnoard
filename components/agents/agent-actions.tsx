@@ -10,6 +10,9 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -20,8 +23,17 @@ import {
   User,
   Smartphone,
   Undo2,
+  Inbox,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { LEAD_DISPATCH_SCOPES } from "@/lib/dispatch/constants";
+
+const SCOPE_LABELS: Record<string, string> = {
+  both: "Airtel + Safaricom",
+  airtel: "Airtel only",
+  safaricom: "Safaricom only",
+  none: "No inbound leads",
+};
 
 interface AgentActionsProps {
   agent: {
@@ -30,6 +42,7 @@ interface AgentActionsProps {
     email: string;
     status: string;
     airtel_connect_opened?: boolean;
+    lead_dispatch_scope?: string;
   };
 }
 
@@ -37,6 +50,7 @@ export function AgentActions({ agent }: AgentActionsProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [scope, setScope] = useState(agent.lead_dispatch_scope ?? "none");
 
   const handleStatusChange = async (newStatus: string) => {
     setActionLoading(newStatus);
@@ -73,6 +87,28 @@ export function AgentActions({ agent }: AgentActionsProps) {
     } catch (error) {
       console.error("Error updating agent status:", error);
       alert("An error occurred while updating the agent status");
+    } finally {
+      setLoading(false);
+      setActionLoading(null);
+    }
+  };
+
+  const handleDispatchScope = async (next: string) => {
+    if (next === scope || loading) return;
+    setActionLoading(`scope_${next}`);
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/agents/${agent.id}/dispatch-scope`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scope: next }),
+      });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Failed to update scope");
+      setScope(next);
+      router.refresh();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Could not update inbound leads");
     } finally {
       setLoading(false);
       setActionLoading(null);
@@ -204,6 +240,34 @@ export function AgentActions({ agent }: AgentActionsProps) {
         <DropdownMenuLabel>Actions</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {getStatusActions()}
+        <DropdownMenuSeparator />
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger disabled={loading} className="text-gray-800">
+            <Inbox className="mr-2 h-4 w-4" />
+            Inbound leads
+            <span className="ml-auto pr-1 text-xs text-gray-500">
+              {SCOPE_LABELS[scope] ?? scope}
+            </span>
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="w-52">
+            {LEAD_DISPATCH_SCOPES.map((value) => (
+              <DropdownMenuItem
+                key={value}
+                disabled={loading || scope === value}
+                onClick={() => void handleDispatchScope(value)}
+              >
+                {scope === value ? (
+                  <CheckCircle2 className="mr-2 h-4 w-4 text-emerald-600" />
+                ) : (
+                  <span className="mr-2 inline-block h-4 w-4" />
+                )}
+                {actionLoading === `scope_${value}`
+                  ? "Saving…"
+                  : SCOPE_LABELS[value] ?? value}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
         <DropdownMenuSeparator />
         <DropdownMenuLabel className="text-xs font-normal text-gray-500">
           Airtel Connect app

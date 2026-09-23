@@ -55,10 +55,6 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/dashboard") &&
     !request.nextUrl.pathname.startsWith("/api/auth")
   ) {
-    console.log("🔒 [Middleware] Checking admin access for user:", user.id);
-    console.log("🔒 [Middleware] User email:", user.email);
-    
-    // Check if user is admin
     const { data: agent, error } = await supabase
       .from("agents")
       .select("is_admin, id, email, status")
@@ -110,13 +106,6 @@ export async function updateSession(request: NextRequest) {
       return NextResponse.redirect(url);
     }
 
-    console.log("✅ [Middleware] Agent data retrieved:", {
-      id: agent?.id,
-      email: agent?.email,
-      is_admin: agent?.is_admin,
-      status: agent?.status,
-    });
-
     // If agent record doesn't exist or user is not admin, deny access
     if (!agent) {
       console.error("⚠️ [Middleware] Agent record is null");
@@ -134,7 +123,6 @@ export async function updateSession(request: NextRequest) {
       return NextResponse.redirect(url);
     }
 
-    console.log("✅ [Middleware] Admin access granted");
   }
 
   // IMPORTANT: You *must* return the supabaseResponse object as it is. If you're

@@ -1,3 +1,5 @@
+import { cache } from "react";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -40,3 +42,27 @@ export async function isAdminUserById(userId: string): Promise<boolean> {
 
   return agent?.is_admin === true;
 }
+
+/** One auth + admin lookup per request. Layout and pages share this. */
+export const requireDashboardAdmin = cache(async () => {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login?error=not_authenticated");
+  }
+
+  const { data: admin } = await supabase
+    .from("agents")
+    .select("is_admin, name, email, status")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (!admin?.is_admin) {
+    redirect("/login?error=admin_access_required");
+  }
+
+  return { user, admin, supabase };
+});

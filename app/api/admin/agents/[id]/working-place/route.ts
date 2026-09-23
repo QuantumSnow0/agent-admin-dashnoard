@@ -7,7 +7,7 @@ import {
 } from "@/lib/google-places/places-server";
 import { parsePreviewGooglePlace } from "@/lib/dispatch/matching";
 
-type Body = { place?: AdminGooglePlace };
+type Body = { place?: AdminGooglePlace | null };
 
 export async function PATCH(
   request: Request,
@@ -25,7 +25,46 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const parsed = parsePreviewGooglePlace(body.place);
+  if (body.place === null) {
+    try {
+      const service = createServiceClient();
+      const updatedAt = new Date().toISOString();
+      const { data: agent, error } = await service
+        .from("agents")
+        .update({
+          working_place: null,
+          working_place_updated_at: updatedAt,
+          updated_at: updatedAt,
+        })
+        .eq("id", agentId)
+        .select("id, working_place, working_place_updated_at, town, area")
+        .maybeSingle();
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+      if (!agent) {
+        return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+      }
+      return NextResponse.json({ success: true, agent });
+    } catch (err) {
+      console.error("[admin/agents/working-place]", err);
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    }
+  }
+
+  const rawPlace = body.place as (AdminGooglePlace & { lat?: number; lng?: number }) | undefined;
+  const lat = Number(rawPlace?.lat);
+  const lng = Number(rawPlace?.lng);
+  const name = String(rawPlace?.name ?? "").trim();
+  const parsed = parsePreviewGooglePlace(
+    rawPlace && Number.isFinite(lat) && Number.isFinite(lng) && name
+      ? {
+          ...rawPlace,
+          placeId: String(rawPlace.placeId ?? "").trim() || `dropped:${lat.toFixed(6)},${lng.toFixed(6)}`,
+          name,
+        }
+      : body.place,
+  );
   if (!parsed) {
     return NextResponse.json(
       { error: "Select a landmark from the search results" },

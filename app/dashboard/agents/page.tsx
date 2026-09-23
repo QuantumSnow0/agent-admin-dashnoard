@@ -1,7 +1,6 @@
-import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
 import Image from "next/image";
 import { AgentsView } from "@/components/agents/agents-view";
+import { requireDashboardAdmin } from "@/lib/utils/admin";
 
 const PAGE_SIZE = 25;
 
@@ -43,7 +42,7 @@ function applyMoneyRange<
 }
 
 export default async function AgentsPage({ searchParams }: AgentsPageProps) {
-  const supabase = await createClient();
+  const { supabase } = await requireDashboardAdmin();
   const params = await searchParams;
   const page = Math.max(1, parseInt(firstParam(params.page) || "1", 10) || 1);
   const statuses = allParams(params.status).filter((value) =>
@@ -67,24 +66,6 @@ export default async function AgentsPage({ searchParams }: AgentsPageProps) {
   const earningsFilter = firstParam(params.earnings);
   const balanceFilter = firstParam(params.balance);
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login?error=not_authenticated");
-  }
-
-  const { data: agent } = await supabase
-    .from("agents")
-    .select("is_admin, name, email")
-    .eq("id", user.id)
-    .single();
-
-  if (!agent || !agent.is_admin) {
-    redirect("/login?error=admin_access_required");
-  }
-
   const [
     { count: registered },
     { count: approved },
@@ -93,18 +74,20 @@ export default async function AgentsPage({ searchParams }: AgentsPageProps) {
     { count: banned },
     { data: townRows },
     { data: areaRows },
-    { data: appRatings },
+    { data: ratingFilterRows },
   ] = await Promise.all([
-    supabase.from("agents").select("*", { count: "exact", head: true }),
-    supabase.from("agents").select("*", { count: "exact", head: true }).eq("status", "approved"),
-    supabase.from("agents").select("*", { count: "exact", head: true }).eq("status", "pending"),
-    supabase.from("agents").select("*", { count: "exact", head: true }).eq("status", "rejected"),
-    supabase.from("agents").select("*", { count: "exact", head: true }).eq("status", "banned"),
+    supabase.from("agents").select("id", { count: "exact", head: true }),
+    supabase.from("agents").select("id", { count: "exact", head: true }).eq("status", "approved"),
+    supabase.from("agents").select("id", { count: "exact", head: true }).eq("status", "pending"),
+    supabase.from("agents").select("id", { count: "exact", head: true }).eq("status", "rejected"),
+    supabase.from("agents").select("id", { count: "exact", head: true }).eq("status", "banned"),
     supabase.from("agents").select("town").not("town", "is", null),
     supabase.from("agents").select("area").not("area", "is", null),
-    supabase
-      .from("app_ratings")
-      .select("agent_id, score, created_at, opened_play_store"),
+    ratingFilter
+      ? supabase
+          .from("app_ratings")
+          .select("agent_id, score, created_at, opened_play_store")
+      : Promise.resolve({ data: [] as { agent_id: string; score: number; created_at: string; opened_play_store: boolean }[] }),
   ]);
 
   const townOptions = Array.from(
@@ -129,7 +112,7 @@ export default async function AgentsPage({ searchParams }: AgentsPageProps) {
   let agentsQuery = supabase
     .from("agents")
     .select(
-      "id, name, email, airtel_phone, safaricom_phone, town, area, status, created_at, airtel_connect_opened, airtel_connect_opened_at",
+      "id, name, email, airtel_phone, safaricom_phone, town, area, status, created_at, airtel_connect_opened, airtel_connect_opened_at, lead_dispatch_scope",
       { count: "exact" },
     )
     .order("created_at", { ascending: false });
@@ -178,14 +161,14 @@ export default async function AgentsPage({ searchParams }: AgentsPageProps) {
   }
 
   if (ratingFilter) {
-    const ratedIds = (appRatings ?? []).map((rating) => rating.agent_id);
+    const ratedIds = (ratingFilterRows ?? []).map((rating) => rating.agent_id);
     if (ratingFilter === "unrated") {
       if (ratedIds.length > 0) {
         agentsQuery = agentsQuery.not("id", "in", `(${ratedIds.join(",")})`);
       }
     } else {
       const score = Number.parseInt(ratingFilter, 10);
-      const matchingIds = (appRatings ?? [])
+      const matchingIds = (ratingFilterRows ?? [])
         .filter((rating) => rating.score === score)
         .map((rating) => rating.agent_id);
       agentsQuery =
@@ -216,8 +199,17 @@ export default async function AgentsPage({ searchParams }: AgentsPageProps) {
     rangeTo
   );
 
+  const pageAgentIds = (agentsList ?? []).map((row) => row.id);
+  const { data: pageRatings } =
+    ratingFilter || pageAgentIds.length === 0
+      ? { data: ratingFilterRows ?? [] }
+      : await supabase
+          .from("app_ratings")
+          .select("agent_id, score, created_at, opened_play_store")
+          .in("agent_id", pageAgentIds);
+
   const ratingsByAgentId = new Map(
-    (appRatings ?? []).map((rating) => [rating.agent_id, rating])
+    (pageRatings ?? []).map((rating) => [rating.agent_id, rating])
   );
 
   const agentsWithRatings = (agentsList ?? []).map((agentRow) => {

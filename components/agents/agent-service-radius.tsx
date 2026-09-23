@@ -55,8 +55,9 @@ export function AgentServiceRadiusControl({
         Service radius
       </Label>
       <p className="mt-1 text-sm text-gray-600">
-        How far from this agent&apos;s working pin they can take jobs. Leave
-        blank to use the global default ({defaultRadiusKm} km). Max{" "}
+        How far from this agent&apos;s working pin they can take jobs when they
+        have no coverage zones. Zones override this radius. Leave blank to use
+        the global default ({defaultRadiusKm} km). Max{" "}
         {DISPATCH_DEFAULTS.maxServiceRadiusKm} km.
       </p>
       <div className="mt-3 flex flex-wrap items-end gap-2">

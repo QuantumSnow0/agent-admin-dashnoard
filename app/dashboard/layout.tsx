@@ -1,5 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
+import { requireDashboardAdmin } from "@/lib/utils/admin";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -18,26 +17,7 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login?error=not_authenticated");
-  }
-
-  // Verify user is admin
-  const { data: agent, error } = await supabase
-    .from("agents")
-    .select("is_admin, name, email, status")
-    .eq("id", user.id)
-    .single();
-
-  if (error || !agent || !agent.is_admin) {
-    redirect("/login?error=admin_access_required");
-  }
+  const { admin: agent } = await requireDashboardAdmin();
 
   const getInitials = (name?: string, email?: string) => {
     if (name) {

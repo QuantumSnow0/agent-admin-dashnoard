@@ -13,6 +13,16 @@ export type LocationRef = {
   longitude: number;
 };
 
+export type CoverageZone = {
+  id: string;
+  agent_id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  radius_km: number;
+  priority: number;
+};
+
 export type AgentCandidate = {
   agent_id: string;
   name?: string | null;
@@ -25,6 +35,9 @@ export type AgentCandidate = {
   fallback_priority?: number;
   working_place?: unknown;
   service_radius_km?: number | null;
+  coverage_zones?: CoverageZone[];
+  pin_coverage_priority?: number | null;
+  accepts_last_24h?: number;
 };
 
 /** Agent opened the app recently (heartbeat), not merely "available" toggle. */
@@ -40,6 +53,7 @@ export function isAgentOnline(
 export type RankedAgent = AgentCandidate & {
   distance_km: number;
   radius_km: number;
+  coverage_priority: number;
 };
 
 export function agentAcceptsProduct(
@@ -130,7 +144,14 @@ function pinDistanceKm(
   return roundKm(distanceKm(leadPoint, agentPoint));
 }
 
-function sortOnlineThenDistance(
+function comparePriorityThenDistance(a: RankedAgent, b: RankedAgent): number {
+  const priorityA = a.coverage_priority ?? DISPATCH_DEFAULTS.pinCoveragePriority;
+  const priorityB = b.coverage_priority ?? DISPATCH_DEFAULTS.pinCoveragePriority;
+  if (priorityA !== priorityB) return priorityA - priorityB;
+  return a.distance_km - b.distance_km;
+}
+
+function sortOnlineThenPriorityThenDistance(
   agents: RankedAgent[],
   onlinePresenceMinutes: number,
 ): RankedAgent[] {
@@ -140,9 +161,76 @@ function sortOnlineThenDistance(
   const offline = agents.filter(
     (a) => !isAgentOnline(a.last_seen_at, onlinePresenceMinutes),
   );
-  online.sort((a, b) => a.distance_km - b.distance_km);
-  offline.sort((a, b) => a.distance_km - b.distance_km);
+  online.sort(comparePriorityThenDistance);
+  offline.sort(comparePriorityThenDistance);
   return [...online, ...offline];
+}
+
+export function circlesOverlapKm(
+  a: { latitude: number; longitude: number; radius_km: number },
+  b: { latitude: number; longitude: number; radius_km: number },
+): boolean {
+  const gap = distanceKm(
+    { latitude: a.latitude, longitude: a.longitude },
+    { latitude: b.latitude, longitude: b.longitude },
+  );
+  return gap <= a.radius_km + b.radius_km;
+}
+
+export function matchAgentCoverage(
+  agent: AgentCandidate,
+  leadPoint: GeoPoint,
+  defaultRadiusKm: number,
+): { distance_km: number; radius_km: number; coverage_priority: number } | null {
+  const zones = agent.coverage_zones ?? [];
+  if (zones.length > 0) {
+    let best: { distance_km: number; radius_km: number; coverage_priority: number } | null =
+      null;
+    for (const zone of zones) {
+      const distance_km = roundKm(
+        distanceKm(leadPoint, {
+          latitude: zone.latitude,
+          longitude: zone.longitude,
+        }),
+      );
+      if (distance_km > zone.radius_km) continue;
+      if (
+        !best ||
+        zone.priority < best.coverage_priority ||
+        (zone.priority === best.coverage_priority && distance_km < best.distance_km)
+      ) {
+        best = {
+          distance_km,
+          radius_km: zone.radius_km,
+          coverage_priority: zone.priority,
+        };
+      }
+    }
+    return best;
+  }
+
+  const distance = pinDistanceKm(leadPoint, agent.working_place);
+  if (distance == null) return null;
+  const radius_km = effectiveRadiusKm(agent, defaultRadiusKm);
+  if (distance > radius_km) return null;
+  const priority = Number(agent.pin_coverage_priority);
+  return {
+    distance_km: distance,
+    radius_km,
+    coverage_priority:
+      Number.isFinite(priority) && priority >= 1
+        ? Math.round(priority)
+        : DISPATCH_DEFAULTS.pinCoveragePriority,
+  };
+}
+
+function applyOverlapDailyCap(
+  ranked: RankedAgent[],
+  cap: number | null,
+): RankedAgent[] {
+  if (ranked.length <= 1 || cap == null || cap <= 0) return ranked;
+  const under = ranked.filter((agent) => (agent.accepts_last_24h ?? 0) < cap);
+  return under.length > 0 ? under : ranked;
 }
 
 function passesCapacity(
@@ -166,6 +254,7 @@ export function rankAgentsInRange(
   maxOpenLeads: number | null,
   onlinePresenceMinutes: number,
   defaultRadiusKm: number,
+  overlapDailyAcceptCap: number | null = DISPATCH_DEFAULTS.overlapDailyAcceptCap,
 ): RankedAgent[] {
   const ranked: RankedAgent[] = [];
 
@@ -174,20 +263,19 @@ export function rankAgentsInRange(
     if (!agentAcceptsProduct(agent.lead_dispatch_scope, product)) continue;
     if (!passesCapacity(agent.agent_id, openLeadCounts, maxOpenLeads)) continue;
 
-    const distance = pinDistanceKm(leadPoint, agent.working_place);
-    if (distance == null) continue;
-
-    const radius_km = effectiveRadiusKm(agent, defaultRadiusKm);
-    if (distance > radius_km) continue;
+    const match = matchAgentCoverage(agent, leadPoint, defaultRadiusKm);
+    if (!match) continue;
 
     ranked.push({
       ...agent,
-      distance_km: distance,
-      radius_km,
+      ...match,
     });
   }
 
-  return sortOnlineThenDistance(ranked, onlinePresenceMinutes);
+  return sortOnlineThenPriorityThenDistance(
+    applyOverlapDailyCap(ranked, overlapDailyAcceptCap),
+    onlinePresenceMinutes,
+  );
 }
 
 /** @deprecated Use rankAgentsInRange. Kept so older call sites compile during rollout. */
@@ -246,6 +334,7 @@ export function rankFallbackAgents(
       ...agent,
       distance_km,
       radius_km,
+      coverage_priority: agent.fallback_priority ?? 100,
     });
   }
 

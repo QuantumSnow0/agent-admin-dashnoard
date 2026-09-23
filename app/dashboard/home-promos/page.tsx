@@ -1,29 +1,10 @@
-import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
+import { requireDashboardAdmin } from "@/lib/utils/admin";
 import { ImageIcon } from "lucide-react";
 import { HomePromosManager } from "@/components/home-promos/home-promos-manager";
 import type { HomePromo } from "@/lib/home-promos";
 
 export default async function HomePromosPage() {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login?error=not_authenticated");
-  }
-
-  const { data: currentUser } = await supabase
-    .from("agents")
-    .select("is_admin")
-    .eq("id", user.id)
-    .single();
-
-  if (!currentUser?.is_admin) {
-    redirect("/login?error=admin_access_required");
-  }
+  const { supabase } = await requireDashboardAdmin();
 
   const { data: promos } = await supabase
     .from("home_promos")
