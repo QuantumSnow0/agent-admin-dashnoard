@@ -38,6 +38,8 @@ export const LEAD_STATUSES = [
   "kyc_completed",
   "pending_install",
   "installed",
+  "approved",
+  "denied",
   "rejected",
   "duplicate",
   "cancelled",
@@ -77,6 +79,3 @@ export const NOTIFICATION_TYPES = {
 
 /** Android package for Airtel Connect KYC (v1: launch or Play Store fallback). */
 export const AIRTEL_CONNECT_PACKAGE = "com.airtel.airtelwork.africa";
-
-/** Flat commission when an inbound lead is marked installed (agent SR/IMEI proof). */
-export const LEAD_INSTALL_COMMISSION_KES = 200;

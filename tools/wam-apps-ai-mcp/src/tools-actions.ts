@@ -71,7 +71,7 @@ const ACTION_TOOL_DESCRIPTIONS: Record<ActionToolName, string> = {
   confirm_safaricom_installation:
     "Confirm Safaricom registration installed (operational; no earnings trigger in repo). Roles: technical_owner, business_partner.",
   confirm_lead_installation:
-    "Confirm inbound lead installation — accrues KSh 200 commission metadata (financial). Roles: technical_owner, business_partner.",
+    "Confirm inbound lead installation. Payment is a custom amount, not a fixed fee (financial). Roles: technical_owner, business_partner.",
   mark_lead_rejected: "Mark an inbound lead rejected. Roles: technical_owner, business_partner.",
   mark_lead_duplicate: "Mark an inbound lead duplicate. Roles: technical_owner, business_partner.",
   mark_lead_cancelled: "Mark an inbound lead cancelled. Roles: technical_owner, business_partner.",

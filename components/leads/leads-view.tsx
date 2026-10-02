@@ -51,7 +51,9 @@ const STATUS_STYLES: Record<string, string> = {
   kyc_in_progress: "bg-violet-100 text-violet-800 border-violet-200",
   kyc_completed: "bg-emerald-100 text-emerald-800 border-emerald-200",
   pending_install: "bg-amber-100 text-amber-900 border-amber-200",
-  installed: "bg-green-100 text-green-800 border-green-200",
+  installed: "bg-sky-100 text-sky-800 border-sky-200",
+  approved: "bg-green-100 text-green-800 border-green-200",
+  denied: "bg-red-100 text-red-800 border-red-200",
   lost: "bg-gray-100 text-gray-700 border-gray-200",
   expired: "bg-gray-100 text-gray-600 border-gray-200",
 };
@@ -423,10 +425,14 @@ export function LeadsView({
                                 : "—")}
                           </td>
                           <td className="px-4 py-3 tabular-nums text-gray-700">
-                            {lead.status === "installed"
-                              ? `KSh ${getLeadInstallCommissionKes(lead).toLocaleString()}`
+                            {lead.status === "installed" || lead.status === "approved"
+                              ? `KSh ${getLeadInstallCommissionKes(lead).toLocaleString()}${
+                                  lead.mpesa_reference ? ` · ${lead.mpesa_reference}` : ""
+                                }`
+                              : lead.status === "denied"
+                                ? "Denied"
                               : lead.status === "pending_install"
-                                ? "Pending review"
+                                ? "Waiting for confirmation"
                                 : "—"}
                           </td>
                           <td className="px-4 py-3 text-gray-500">

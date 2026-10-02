@@ -31,6 +31,8 @@ export default async function LeadInstallationsPage({ searchParams }: PageProps)
     kyc: 0,
     pending: 0,
     installed: 0,
+    approved: 0,
+    denied: 0,
     closed: 0,
     rejected: 0,
     duplicate: 0,
@@ -117,7 +119,21 @@ export default async function LeadInstallationsPage({ searchParams }: PageProps)
       value: counts.installed,
       href: "/dashboard/lead-installations?status=installed",
       icon: Package,
+      cardBg: "bg-sky-600",
+    },
+    {
+      title: "Approved",
+      value: counts.approved,
+      href: "/dashboard/lead-installations?status=approved",
+      icon: Package,
       cardBg: "bg-emerald-600",
+    },
+    {
+      title: "Denied",
+      value: counts.denied,
+      href: "/dashboard/lead-installations?status=denied",
+      icon: XCircle,
+      cardBg: "bg-red-600",
     },
     {
       title: "Closed",
@@ -135,16 +151,14 @@ export default async function LeadInstallationsPage({ searchParams }: PageProps)
           Lead installations
         </h1>
         <p className="mt-1 text-sm text-gray-600">
-          Same workflow as customer registrations:{" "}
-          <strong>KYC done</strong> = registration submitted, ready to confirm
-          install; <strong>Pending</strong> = agent submitted SR/IMEI proof;{" "}
-          <strong>Installed</strong> = you confirmed → KSh 200 commission
-          accrues. Record payouts on the agent profile (Payout Manager), not
-          here.
+          An Airtel lead is Installed once the agent saves the Order ID, then
+          you approve it with an amount and an M-Pesa reference, or deny it
+          with a reason. Safaricom stays Pending after the IMEI until you do
+          the same. Record payouts on the agent profile, not here.
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {countCards.map(({ title, value, href, icon: Icon, cardBg }) => (
           <Link key={title} href={href}>
             <Card

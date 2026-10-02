@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { requireAdminApi } from "@/lib/admin-api";
 import { fetchAdminInboundLeadById } from "@/lib/admin-leads";
-import { resolveLeadInstallConfirmKes } from "@/lib/lead-install-commission";
 import { deliverPushNotification } from "@/lib/dispatch/push-delivery";
 
 export const dynamic = "force-dynamic";
@@ -10,6 +9,8 @@ export const dynamic = "force-dynamic";
 const ALLOWED_STATUSES = new Set([
   "pending_install",
   "installed",
+  "approved",
+  "denied",
   "rejected",
   "duplicate",
   "cancelled",
@@ -34,9 +35,14 @@ export async function PATCH(
     return NextResponse.json({ error: "Lead id required" }, { status: 400 });
   }
 
-  let body: { status?: string };
+  let body: { status?: string; amountKes?: number; mpesaReference?: string; reason?: string };
   try {
-    body = (await request.json()) as { status?: string };
+    body = (await request.json()) as {
+      status?: string;
+      amountKes?: number;
+      mpesaReference?: string;
+      reason?: string;
+    };
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
@@ -70,40 +76,55 @@ export async function PATCH(
     };
 
     if (nextStatus === "installed") {
-      const { data: dispatchCfg } = await service
-        .from("dispatch_config")
-        .select(
-          "lead_receiver_commission_kes, lead_receiver_commission_standard_kes, lead_receiver_commission_premium_kes",
-        )
-        .limit(1)
-        .maybeSingle();
-
-      const receiverStd = Number(
-        dispatchCfg?.lead_receiver_commission_standard_kes ??
-          dispatchCfg?.lead_receiver_commission_kes,
+      return NextResponse.json(
+        { error: "Approve with an amount and an M-Pesa reference" },
+        { status: 400 },
       );
-      const receiverPrem = Number(
-        dispatchCfg?.lead_receiver_commission_premium_kes ??
-          dispatchCfg?.lead_receiver_commission_kes,
-      );
+    }
 
-      const commissionKes = resolveLeadInstallConfirmKes({
-        source: lead.source,
-        submitted_by_agent_id: lead.submitted_by_agent_id,
-        preferredPackage: lead.plan_label ?? lead.preferred_package,
-        existingCommissionKes: lead.commission_earned_ksh,
-        receiverFees: {
-          standard: Number.isFinite(receiverStd) ? receiverStd : 0,
-          premium: Number.isFinite(receiverPrem) ? receiverPrem : 0,
-        },
-      });
+    if (nextStatus === "approved" || nextStatus === "denied") {
+      const waitingStatus =
+        lead.product === "airtel" ? "installed" : "pending_install";
+      if (lead.status !== waitingStatus) {
+        return NextResponse.json(
+          {
+            error:
+              lead.product === "airtel"
+                ? "Only an installed lead can be approved or denied"
+                : "Only a pending install can be approved or denied",
+          },
+          { status: 400 },
+        );
+      }
+    }
+
+    if (nextStatus === "approved") {
+      const amount = Math.round(Number(body.amountKes));
+      if (!Number.isFinite(amount) || amount < 1) {
+        return NextResponse.json(
+          { error: "Enter the payment amount" },
+          { status: 400 },
+        );
+      }
+      const mpesaReference = String(body.mpesaReference ?? "")
+        .replace(/\s+/g, "")
+        .toUpperCase();
+      if (!/^[A-Z0-9]{6,20}$/.test(mpesaReference)) {
+        return NextResponse.json(
+          { error: "Enter the M-Pesa reference code" },
+          { status: 400 },
+        );
+      }
 
       update.installed_at = lead.installed_at ?? now;
-      update.commission_earned_ksh = commissionKes;
+      update.commission_earned_ksh = amount;
+      update.mpesa_reference = mpesaReference;
+      update.denial_reason = null;
       update.metadata = {
         ...prevMetadata,
         installCommission: {
-          amountKes: commissionKes,
+          amountKes: amount,
+          mpesaReference,
           confirmedAt: now,
           confirmedByAdminId: auth.user.id,
           proofReference:
@@ -114,9 +135,24 @@ export async function PATCH(
       };
     }
 
+    if (nextStatus === "denied") {
+      const reason = String(body.reason ?? "").trim();
+      if (reason.length < 3) {
+        return NextResponse.json(
+          { error: "Enter a reason for denial" },
+          { status: 400 },
+        );
+      }
+      update.commission_earned_ksh = null;
+      update.mpesa_reference = null;
+      update.denial_reason = reason;
+    }
+
     if (nextStatus === "pending_install") {
       update.commission_earned_ksh = null;
       update.installed_at = null;
+      update.mpesa_reference = null;
+      update.denial_reason = null;
     }
 
     if (
@@ -126,9 +162,11 @@ export async function PATCH(
       nextStatus === "lost" ||
       nextStatus === "needs_reassignment"
     ) {
-      if (lead.status !== "installed") {
+      if (lead.status !== "installed" && lead.status !== "approved") {
         update.commission_earned_ksh = null;
         update.installed_at = null;
+        update.mpesa_reference = null;
+        update.denial_reason = null;
       }
     }
 
@@ -145,28 +183,33 @@ export async function PATCH(
       );
     }
 
-    if (
-      nextStatus === "installed" &&
-      lead.assigned_agent_id &&
-      lead.status !== "installed"
-    ) {
+    const shouldNotify =
+      (nextStatus === "approved" || nextStatus === "denied") &&
+      Boolean(lead.assigned_agent_id);
+
+    if (shouldNotify) {
       const amount = Number(update.commission_earned_ksh) || 0;
+      const mpesa = String(update.mpesa_reference ?? "");
+      const reason = String(update.denial_reason ?? "");
       try {
         const { data: notification, error: notifyError } = await service
           .from("notifications")
           .insert({
             agent_id: lead.assigned_agent_id,
             related_id: leadId,
-            title: "Installation confirmed",
+            title: nextStatus === "approved" ? "Payment approved" : "Payment denied",
             message:
-              amount > 0
-                ? `Admin confirmed install for ${lead.customer_name}. Commission KSh ${amount} will be paid with your next payout.`
-                : `Admin confirmed install for ${lead.customer_name}.`,
+              nextStatus === "approved"
+                ? `Payment for '${lead.customer_name}' is approved. You earned KSh ${amount}. M-Pesa ${mpesa}.`
+                : `Payment for '${lead.customer_name}' was denied. ${reason}`,
             type: "LEAD_INSTALLED",
             is_read: false,
             metadata: {
               leadId,
+              status: nextStatus,
               commissionKes: amount,
+              mpesaReference: mpesa || null,
+              reason: reason || null,
               product: lead.product,
             },
           })

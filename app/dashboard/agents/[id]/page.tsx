@@ -75,9 +75,9 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
     supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }).eq("agent_id", id),
     supabase
       .from("customer_registrations")
-      .select("preferred_package, units_required, commission_package, commission_units")
+      .select("status, preferred_package, units_required, commission_package, commission_units, approved_amount_kes")
       .eq("agent_id", id)
-      .eq("status", "installed")
+      .in("status", ["installed", "approved"])
       .eq("commission_exempt", false),
     supabase
       .from("customer_registrations")
@@ -103,7 +103,7 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
       .from("inbound_leads")
       .select("commission_earned_ksh, status")
       .eq("assigned_agent_id", id)
-      .eq("status", "installed"),
+      .in("status", ["installed", "approved"]),
     supabase
       .from("app_ratings")
       .select("score, created_at, opened_play_store")

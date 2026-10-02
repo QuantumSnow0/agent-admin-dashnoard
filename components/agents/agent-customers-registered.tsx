@@ -32,12 +32,14 @@ type StatusFilter =
   | "all"
   | "pending"
   | "installed"
+  | "approved"
+  | "denied"
   | "closed"
   | "rejected"
   | "duplicate"
   | "cancelled";
 
-type InboundStatusFilter = "all" | "active" | "installed" | "closed";
+type InboundStatusFilter = "all" | "active" | "installed" | "approved" | "denied" | "closed";
 
 const INBOUND_ACTIVE_STATUSES = [
   "assigned",
@@ -49,6 +51,7 @@ const INBOUND_ACTIVE_STATUSES = [
 const INBOUND_CLOSED_STATUSES = [
   "lost",
   "expired",
+  "denied",
   "rejected",
   "duplicate",
   "cancelled",
@@ -115,11 +118,13 @@ export function AgentCustomersRegistered({
     const all = registrations.length;
     const pending = registrations.filter((r) => r.status === "pending").length;
     const installed = registrations.filter((r) => r.status === "installed").length;
+    const approved = registrations.filter((r) => r.status === "approved").length;
+    const denied = registrations.filter((r) => r.status === "denied").length;
     const rejected = registrations.filter((r) => r.status === "rejected").length;
     const duplicate = registrations.filter((r) => r.status === "duplicate").length;
     const cancelled = registrations.filter((r) => r.status === "cancelled").length;
-    const closed = rejected + duplicate + cancelled;
-    return { all, pending, installed, closed, rejected, duplicate, cancelled };
+    const closed = denied + rejected + duplicate + cancelled;
+    return { all, pending, installed, approved, denied, closed, rejected, duplicate, cancelled };
   }, [registrations]);
 
   const getFiltered = (filter: StatusFilter) => {
@@ -134,8 +139,10 @@ export function AgentCustomersRegistered({
     const all = leads.length;
     const active = leads.filter((l) => INBOUND_ACTIVE_STATUSES.includes(l.status)).length;
     const installed = leads.filter((l) => l.status === "installed").length;
+    const approved = leads.filter((l) => l.status === "approved").length;
+    const denied = leads.filter((l) => l.status === "denied").length;
     const closed = leads.filter((l) => INBOUND_CLOSED_STATUSES.includes(l.status)).length;
-    return { all, active, installed, closed };
+    return { all, active, installed, approved, denied, closed };
   }, [leads]);
 
   const getFilteredInbound = (filter: InboundStatusFilter) => {
@@ -145,6 +152,9 @@ export function AgentCustomersRegistered({
     }
     if (filter === "installed") {
       return leads.filter((l) => l.status === "installed");
+    }
+    if (filter === "approved" || filter === "denied") {
+      return leads.filter((l) => l.status === filter);
     }
     return leads.filter((l) => INBOUND_CLOSED_STATUSES.includes(l.status));
   };
@@ -184,6 +194,8 @@ export function AgentCustomersRegistered({
     "all",
     "pending",
     "installed",
+    "approved",
+    "denied",
     "closed",
     "rejected",
     "duplicate",
@@ -194,6 +206,8 @@ export function AgentCustomersRegistered({
     "all",
     "active",
     "installed",
+    "approved",
+    "denied",
     "closed",
   ];
 
@@ -297,6 +311,18 @@ export function AgentCustomersRegistered({
                     Installed ({inboundCounts.installed})
                   </TabsTrigger>
                   <TabsTrigger
+                    value="approved"
+                    className="rounded-md px-3 text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                  >
+                    Approved ({inboundCounts.approved})
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="denied"
+                    className="rounded-md px-3 text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                  >
+                    Denied ({inboundCounts.denied})
+                  </TabsTrigger>
+                  <TabsTrigger
                     value="closed"
                     className="rounded-md px-3 text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm"
                   >
@@ -370,6 +396,14 @@ export function AgentCustomersRegistered({
                                   className="cursor-pointer border-b border-gray-100 last:border-b-0 hover:bg-gray-50/50"
                                   onClick={() => openLeadDetail(lead)}
                                   onKeyDown={(e) => {
+                                    const target = e.target as HTMLElement;
+                                    if (
+                                      target.closest(
+                                        "input, textarea, select, [contenteditable='true']"
+                                      )
+                                    ) {
+                                      return;
+                                    }
                                     if (e.key === "Enter" || e.key === " ") {
                                       e.preventDefault();
                                       openLeadDetail(lead);
@@ -419,12 +453,15 @@ export function AgentCustomersRegistered({
                                   </td>
                                   <td className="px-3 py-2 text-gray-500 tabular-nums whitespace-nowrap">
                                     {dateStr}
-                                    {lead.status === "installed" ? (
+                                    {lead.status === "installed" || lead.status === "approved" ? (
                                       <span className="ml-1 text-gray-400">
                                         · KSh{" "}
                                         {getLeadInstallCommissionKes(
                                           lead,
                                         ).toLocaleString()}
+                                        {lead.mpesa_reference
+                                          ? ` · ${lead.mpesa_reference}`
+                                          : ""}
                                       </span>
                                     ) : null}
                                   </td>
@@ -489,6 +526,12 @@ export function AgentCustomersRegistered({
                 <TabsTrigger value="installed" className="rounded-md px-3 text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm">
                   <Package className="mr-1.5 h-3.5 w-3.5" />
                   Installed ({counts.installed})
+                </TabsTrigger>
+                <TabsTrigger value="approved" className="rounded-md px-3 text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                  Approved ({counts.approved})
+                </TabsTrigger>
+                <TabsTrigger value="denied" className="rounded-md px-3 text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                  Denied ({counts.denied})
                 </TabsTrigger>
                 <TabsTrigger value="closed" className="rounded-md px-3 text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm">
                   <XCircle className="mr-1.5 h-3.5 w-3.5" />
@@ -573,6 +616,14 @@ export function AgentCustomersRegistered({
                                 className="cursor-pointer border-b border-gray-100 last:border-b-0 hover:bg-gray-50/50"
                                 onClick={() => openDetail(reg)}
                                 onKeyDown={(e) => {
+                                  const target = e.target as HTMLElement;
+                                  if (
+                                    target.closest(
+                                      "input, textarea, select, [contenteditable='true']"
+                                    )
+                                  ) {
+                                    return;
+                                  }
                                   if (e.key === "Enter" || e.key === " ") {
                                     e.preventDefault();
                                     openDetail(reg);

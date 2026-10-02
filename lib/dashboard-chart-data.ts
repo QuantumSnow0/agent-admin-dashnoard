@@ -34,7 +34,12 @@ type CustRegRow = DatedRow & {
   units_required?: number | null;
   commission_package?: string | null;
   commission_units?: number | null;
+  approved_amount_kes?: number | string | null;
 };
+
+function isAirtelInstallLogged(status: string): boolean {
+  return status === "installed" || status === "approved";
+}
 
 type SafRegRow = DatedRow & {
   agent_id: string | null;
@@ -60,7 +65,7 @@ function buildTopAgents(
   const counts = new Map<string, { airtel: number; safaricom: number }>();
   const filterRow = (row: CustRegRow | SafRegRow) => {
     if (!inLastDays(row.created_at, days)) return false;
-    if (installedOnly && row.status !== "installed") return false;
+    if (installedOnly && !isAirtelInstallLogged(row.status)) return false;
     return true;
   };
 
@@ -98,7 +103,7 @@ export function buildChartRangeData(
   safRegs: SafRegRow[],
   agents: { id: string; name: string | null; email: string | null }[],
   days: 7 | 30,
-  rates?: CommissionRates
+  _rates?: CommissionRates
 ): ChartRangeData {
   const custInRange = custRegs.filter((r) => inLastDays(r.created_at, days));
   const safInRange = safRegs.filter((r) => inLastDays(r.created_at, days));
@@ -121,7 +126,7 @@ export function buildChartRangeData(
     const dayStart = startOfDay(day).getTime();
     const dayCustInstalled = custInRange.filter(
       (r) =>
-        r.status === "installed" &&
+        r.status === "approved" &&
         r.created_at &&
         startOfDay(new Date(r.created_at)).getTime() === dayStart
     );
@@ -133,7 +138,7 @@ export function buildChartRangeData(
     );
 
     const airtelRevenue = dayCustInstalled.reduce(
-      (sum, r) => sum + getAirtelCommissionKesForRegistration(r, rates),
+      (sum, r) => sum + getAirtelCommissionKesForRegistration(r),
       0
     );
     const safRevenue = daySafInstalled.reduce(
@@ -144,7 +149,7 @@ export function buildChartRangeData(
     return { date: format(day, days <= 7 ? "EEE d" : "MMM d"), revenue: airtelRevenue + safRevenue };
   });
 
-  const custInstalledInRange = custInRange.filter((r) => r.status === "installed");
+  const custInstalledInRange = custInRange.filter((r) => isAirtelInstallLogged(r.status));
   const safInstalledInRange = safInRange.filter((r) => r.status === "installed");
   const premiumCount = custInstalledInRange
     .filter((r) => r.preferred_package === "premium")
@@ -170,10 +175,12 @@ export function buildChartRangeData(
 
 export function computeCommissionLiability(
   custInstalled: {
+    status?: string | null;
     preferred_package?: string | null;
     units_required?: number | null;
     commission_package?: string | null;
     commission_units?: number | null;
+    approved_amount_kes?: number | string | null;
   }[],
   safInstalled: {
     service_package?: string;
@@ -182,10 +189,10 @@ export function computeCommissionLiability(
     dedicated_wifi_deal_id?: string | null;
   }[],
   paymentRows: { amount_ksh?: number | string | null }[],
-  rates?: CommissionRates
+  _rates?: CommissionRates
 ) {
   const airtelEarned = custInstalled.reduce(
-    (sum, row) => sum + getAirtelCommissionKesForRegistration(row, rates),
+    (sum, row) => sum + getAirtelCommissionKesForRegistration(row),
     0
   );
   const safaricomEarned = safInstalled.reduce(
@@ -218,7 +225,7 @@ export function buildConversionFunnel(
 ): ConversionFunnel {
   const all = [...custRegs, ...safRegs];
   const registered = all.length;
-  const installed = all.filter((r) => r.status === "installed").length;
+  const installed = all.filter((r) => isAirtelInstallLogged(r.status)).length;
   const closed = all.filter((r) => isClosedRegistrationStatus(r.status)).length;
 
   const pct = (part: number, whole: number) =>
@@ -305,7 +312,7 @@ function buildGeographyCounts(
   };
 
   for (const row of custRegs) {
-    if (installedOnly && row.status !== "installed") continue;
+    if (installedOnly && !isAirtelInstallLogged(row.status)) continue;
     bump(getAirtelRegistrationLocation(row), "airtel");
   }
 

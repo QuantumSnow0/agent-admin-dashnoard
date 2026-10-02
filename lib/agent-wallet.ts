@@ -12,6 +12,7 @@ export type CommissionRates = { standard: number; premium: number };
 
 export type AirtelInstalledRow = AirtelCommissionBasisRow & {
   status?: string | null;
+  approved_amount_kes?: number | string | null;
 };
 
 export type SafaricomInstalledRow = {
@@ -74,16 +75,12 @@ export function computeAgentWalletSummary(input: {
     safaricomInstalledRows,
     leadInstallRows = [],
     paymentRows,
-    rates,
   } = input;
 
   const airtelCommissionKsh = airtelInstalledRows.reduce(
     (sum, row) =>
       sum +
-      getAirtelCommissionKesForRegistration(
-        { ...row, status: row.status ?? "installed" },
-        rates
-      ),
+      getAirtelCommissionKesForRegistration(row),
     0
   );
 
@@ -92,7 +89,7 @@ export function computeAgentWalletSummary(input: {
     0
   );
 
-  // Flat KSh 200 per installed inbound lead (see lead-install-commission.ts)
+  // Approved inbound-lead payments, plus older installed rows.
   const leadInstallCommissionKsh = leadInstallRows.reduce(
     (sum, row) => sum + getLeadInstallCommissionKes(row),
     0

@@ -1,5 +1,4 @@
 import {
-  getEffectiveCommissionPackage,
   getEffectiveCommissionUnits,
   type AirtelCommissionBasisRow,
 } from "./airtel-commission-effective";
@@ -16,17 +15,17 @@ export function normalizeUnitsRequired(value: unknown): number {
   });
 }
 
-/** Airtel commission for one registration (effective package rate × effective units). */
+/** Airtel payment for one registration. Only an approved custom amount counts. */
 export function getAirtelCommissionKesForRegistration(
-  row: AirtelCommissionBasisRow & { status?: string | null },
-  rates?: { standard: number; premium: number }
+  row: AirtelCommissionBasisRow & {
+    status?: string | null;
+    approved_amount_kes?: number | string | null;
+  }
 ): number {
-  if (row.status != null && row.status !== "installed") return 0;
-  const std = rates?.standard ?? STANDARD_COMMISSION;
-  const prem = rates?.premium ?? PREMIUM_COMMISSION;
-  const units = getEffectiveCommissionUnits(row);
-  const pkg = getEffectiveCommissionPackage(row);
-  return units * (pkg === "premium" ? prem : std);
+  if (row.status !== "approved") return 0;
+  const amount = Number(row.approved_amount_kes);
+  if (!Number.isFinite(amount) || amount < 1) return 0;
+  return Math.round(amount);
 }
 
 const AGENT_COMMISSION_SHARE = 0.3;

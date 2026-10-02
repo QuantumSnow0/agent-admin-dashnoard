@@ -105,9 +105,8 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-gray-900">Inbound leads</h1>
         <p className="mt-1 text-sm text-gray-600">
-          Dispatch queue and active field work. Non-installer lead fees are set
-          below by package (0 = hidden in the app). Website lead install fee
-          stays KSh 200 — review installs on{" "}
+          Dispatch queue and active field work. Payment is the custom amount
+          entered when a lead is approved. Review installs on{" "}
           <a
             href="/dashboard/lead-installations"
             className="font-medium text-indigo-600 hover:text-indigo-800"

@@ -71,6 +71,8 @@ export type InboundLeadRecord = {
   safaricom_imei: string | null;
   registration_id: string | null;
   commission_earned_ksh: number | null;
+  mpesa_reference: string | null;
+  denial_reason: string | null;
   ms_forms_response_id: string | null;
   ms_forms_submitted_at: string | null;
   created_at: string;
@@ -136,6 +138,8 @@ const INBOUND_LEAD_SELECT = `
   safaricom_imei,
   registration_id,
   commission_earned_ksh,
+  mpesa_reference,
+  denial_reason,
   ms_forms_response_id,
   ms_forms_submitted_at,
   created_at,
@@ -426,7 +430,11 @@ export function countLeadsByTab(leads: AdminInboundLeadRow[]) {
     ).length,
     overdue: leads.filter((l) => l.is_overdue).length,
     installations: leads.filter(
-      (l) => l.status === "pending_install" || l.status === "installed",
+      (l) =>
+        l.status === "pending_install" ||
+        l.status === "installed" ||
+        l.status === "approved" ||
+        l.status === "denied",
     ).length,
     closed: leads.filter((l) =>
       LEAD_CLOSED_STATUSES.includes(l.status as (typeof LEAD_CLOSED_STATUSES)[number]),
@@ -510,6 +518,10 @@ export async function fetchAdminLeadInstallations(
     query = query.eq("status", "pending_install");
   } else if (statusFilter === "installed") {
     query = query.eq("status", "installed");
+  } else if (statusFilter === "approved") {
+    query = query.eq("status", "approved");
+  } else if (statusFilter === "denied") {
+    query = query.eq("status", "denied");
   } else if (statusFilter === "closed") {
     query = query.in("status", [...LEAD_INSTALL_CLOSED_STATUSES]);
   } else if (statusFilter === "rejected") {
@@ -528,7 +540,7 @@ export async function fetchAdminLeadInstallations(
   if (search) {
     const escaped = search.replace(/'/g, "''");
     query = query.or(
-      `customer_name.ilike.%${escaped}%,primary_phone.ilike.%${escaped}%,installation_town.ilike.%${escaped}%,county.ilike.%${escaped}%,airtel_sr_number.ilike.%${escaped}%,safaricom_imei.ilike.%${escaped}%`,
+      `customer_name.ilike.%${escaped}%,primary_phone.ilike.%${escaped}%,installation_town.ilike.%${escaped}%,county.ilike.%${escaped}%,airtel_sr_number.ilike.%${escaped}%,safaricom_imei.ilike.%${escaped}%,mpesa_reference.ilike.%${escaped}%`,
     );
   }
 
@@ -560,7 +572,7 @@ export async function fetchAdminLeadInstallations(
 }
 
 export async function fetchLeadInstallationCounts(service: SupabaseClient) {
-  const [allRes, kycRes, pendingRes, installedRes, rejectedRes, duplicateRes, cancelledRes] =
+  const [allRes, kycRes, pendingRes, installedRes, approvedRes, deniedRes, rejectedRes, duplicateRes, cancelledRes] =
     await Promise.all([
       service
         .from("inbound_leads")
@@ -581,6 +593,14 @@ export async function fetchLeadInstallationCounts(service: SupabaseClient) {
       service
         .from("inbound_leads")
         .select("id", { count: "exact", head: true })
+        .eq("status", "approved"),
+      service
+        .from("inbound_leads")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "denied"),
+      service
+        .from("inbound_leads")
+        .select("id", { count: "exact", head: true })
         .eq("status", "rejected"),
       service
         .from("inbound_leads")
@@ -595,16 +615,20 @@ export async function fetchLeadInstallationCounts(service: SupabaseClient) {
   const kyc = kycRes.count ?? 0;
   const pending = pendingRes.count ?? 0;
   const installed = installedRes.count ?? 0;
+  const approved = approvedRes.count ?? 0;
+  const denied = deniedRes.count ?? 0;
   const rejected = rejectedRes.count ?? 0;
   const duplicate = duplicateRes.count ?? 0;
   const cancelled = cancelledRes.count ?? 0;
-  const closed = rejected + duplicate + cancelled;
+  const closed = denied + rejected + duplicate + cancelled;
 
   return {
     all: allRes.count ?? 0,
     kyc,
     pending,
     installed,
+    approved,
+    denied,
     closed,
     rejected,
     duplicate,

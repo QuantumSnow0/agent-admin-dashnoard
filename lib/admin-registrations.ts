@@ -11,6 +11,9 @@ export type AdminRegistrationDetailFields = {
   ms_forms_submitted_at?: string | null;
   airtel_connect_entry?: "wam_first" | "connect_first" | null;
   airtel_connect_order_id?: string | null;
+  approved_amount_kes?: number | null;
+  mpesa_reference?: string | null;
+  denial_reason?: string | null;
   /** Safaricom raw fields */
   identification_number?: string | null;
   date_of_birth?: string | null;
@@ -81,6 +84,9 @@ export const CUSTOMER_REGISTRATION_ADMIN_SELECT = `
   ms_forms_submitted_at,
   airtel_connect_entry,
   airtel_connect_order_id,
+  approved_amount_kes,
+  mpesa_reference,
+  denial_reason,
   agents(name)
 `;
 
@@ -218,6 +224,10 @@ export function mapCustomerRegistrationToAdminRow(reg: Record<string, unknown>):
       (r.airtel_connect_entry as "wam_first" | "connect_first" | null) ?? null,
     airtel_connect_order_id:
       (r.airtel_connect_order_id as string | null) ?? null,
+    approved_amount_kes:
+      r.approved_amount_kes != null ? Number(r.approved_amount_kes) : null,
+    mpesa_reference: (r.mpesa_reference as string | null) ?? null,
+    denial_reason: (r.denial_reason as string | null) ?? null,
   };
 }
 

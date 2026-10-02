@@ -33,6 +33,8 @@ type InstallCounts = {
   kyc: number;
   pending: number;
   installed: number;
+  approved: number;
+  denied: number;
   closed: number;
   rejected: number;
   duplicate: number;
@@ -222,6 +224,12 @@ export function LeadInstallationsView({
                 <Package className="mr-1.5 h-3.5 w-3.5" />
                 Installed ({counts.installed})
               </TabsTrigger>
+              <TabsTrigger value="approved" className="rounded-md px-3 text-xs">
+                Approved ({counts.approved})
+              </TabsTrigger>
+              <TabsTrigger value="denied" className="rounded-md px-3 text-xs">
+                Denied ({counts.denied})
+              </TabsTrigger>
               <TabsTrigger value="closed" className="rounded-md px-3 text-xs">
                 <XCircle className="mr-1.5 h-3.5 w-3.5" />
                 Closed ({counts.closed})
@@ -253,7 +261,7 @@ export function LeadInstallationsView({
                     <tr className="border-b border-gray-200 bg-gray-50/80 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500">
                       <th className="px-3 py-2">Product</th>
                       <th className="px-3 py-2">Customer</th>
-                      <th className="px-3 py-2">Proof</th>
+                      <th className="px-3 py-2">Order ID / IMEI</th>
                       <th className="px-3 py-2">Location</th>
                       <th className="px-3 py-2">Status</th>
                       <th className="px-3 py-2">Commission</th>
@@ -298,9 +306,11 @@ export function LeadInstallationsView({
                             </span>
                           </td>
                           <td className="px-3 py-2 tabular-nums">
-                            {lead.status === "installed"
+                            {lead.status === "installed" || lead.status === "approved"
                               ? getLeadInstallCommissionKes(lead) > 0
-                                ? `KSh ${getLeadInstallCommissionKes(lead).toLocaleString()}`
+                                ? `KSh ${getLeadInstallCommissionKes(lead).toLocaleString()}${
+                                    lead.mpesa_reference ? ` · ${lead.mpesa_reference}` : ""
+                                  }`
                                 : "—"
                               : leadInstallCommissionLabel(lead.status, {
                                   source: lead.source,

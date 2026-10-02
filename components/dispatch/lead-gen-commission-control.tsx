@@ -135,9 +135,9 @@ export function LeadGenCommissionControl({
             Non-installer lead fees
           </p>
           <p className="mt-1 text-sm text-gray-600">
-            Separate fees for standard and premium packages. Website leads still
-            use the fixed KSh 200 install fee. Set a fee to 0 to hide it in the
-            agent app.
+            Separate fees for standard and premium packages. Lead payment itself
+            is the custom amount entered on approval. Set a fee to 0 to hide it
+            in the agent app.
           </p>
         </div>
         <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs text-gray-700">

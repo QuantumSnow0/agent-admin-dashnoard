@@ -10,7 +10,9 @@ import { dispatchLead } from "../_shared/dispatch/dispatch-service.ts";
  * Release redispatches when another agent is available; otherwise stays assigned.
  * Auth: agent JWT.
  *
- * On action=installed → status pending_install (admin confirms commission + payouts).
+ * On action=installed:
+ *   Airtel → save Order ID and set status installed (payment still needs approval).
+ *   Safaricom → save IMEI and set status pending_install.
  */
 
 type Body = {
@@ -118,21 +120,28 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: true, status: lead.status });
     }
 
-    // --- Agent submits install proof → pending_install (admin confirms commission) ---
+    // Airtel: Order ID → installed. Safaricom: IMEI → pending_install.
     if (action === "installed") {
-      if (lead.status === "installed") {
+      if (lead.status === "approved" || lead.status === "denied") {
+        return jsonResponse(
+          { error: "Payment for this lead is already decided" },
+          409,
+        );
+      }
+
+      if (lead.product === "safaricom" && lead.status === "pending_install") {
         return jsonResponse({
           success: true,
-          status: "installed",
-          commissionKes: Number(lead.commission_earned_ksh) || undefined,
+          status: "pending_install",
           idempotent: true,
         });
       }
 
-      if (lead.status === "pending_install") {
+      if (lead.product === "safaricom" && lead.status === "installed") {
         return jsonResponse({
           success: true,
-          status: "pending_install",
+          status: "installed",
+          commissionKes: Number(lead.commission_earned_ksh) || undefined,
           idempotent: true,
         });
       }
@@ -154,60 +163,134 @@ Deno.serve(async (req) => {
         );
       }
 
-      const proofUpdate: Record<string, unknown> = {
-        status: "pending_install",
-        // Proof received; commission + installed_at set when admin confirms.
-        commission_earned_ksh: null,
-        metadata: {
-          ...prevMetadata,
-          installProof: {
-            submittedAt: now,
-            agentId: user.id,
-          },
-        },
-      };
-
       if (lead.product === "airtel") {
-        const sr = String(body.airtelSrNumber ?? "").trim();
-        if (!sr) {
+        const orderId = String(body.airtelSrNumber ?? "").trim();
+        if (orderId.length < 3) {
           return jsonResponse(
-            { error: "airtelSrNumber is required for Airtel install" },
+            { error: "Enter a valid Airtel Connect Order ID" },
             400,
           );
         }
-        proofUpdate.airtel_sr_number = sr;
-      } else if (lead.product === "safaricom") {
-        const imei = String(body.safaricomImei ?? "").trim();
-        if (!imei) {
+
+        const existing = String(lead.airtel_sr_number ?? "").trim();
+        if (existing && existing.toLowerCase() !== orderId.toLowerCase()) {
+          return jsonResponse({ error: "Order ID is already saved" }, 409);
+        }
+        if (
+          existing &&
+          existing.toLowerCase() === orderId.toLowerCase() &&
+          lead.status === "installed"
+        ) {
+          return jsonResponse({
+            success: true,
+            status: "installed",
+            idempotent: true,
+          });
+        }
+
+        const { data: used, error: usedError } = await service.rpc(
+          "airtel_order_id_is_used",
+          { p_order_id: orderId, p_exclude_id: leadId },
+        );
+        if (usedError) {
+          console.error("lead-outcome order id check:", usedError);
+          return jsonResponse({ error: "Could not check this Order ID" }, 503);
+        }
+        if (used === true) {
+          return jsonResponse({ error: "This Order ID is already used" }, 409);
+        }
+
+        const { error: updateError } = await service
+          .from("inbound_leads")
+          .update({
+            status: "installed",
+            airtel_sr_number: orderId,
+            installed_at: lead.installed_at ?? now,
+            commission_earned_ksh: null,
+            metadata: {
+              ...prevMetadata,
+              installProof: {
+                submittedAt: now,
+                agentId: user.id,
+                orderId,
+              },
+            },
+          })
+          .eq("id", leadId);
+
+        if (updateError) {
+          console.error("lead-outcome order id:", updateError);
+          const message = String(updateError.message ?? "");
           return jsonResponse(
-            { error: "safaricomImei is required for Safaricom install" },
-            400,
+            {
+              error: message.toLowerCase().includes("already used") ||
+                  message.toLowerCase().includes("order_id")
+                ? "This Order ID is already used"
+                : "Failed to save Order ID",
+            },
+            message.toLowerCase().includes("already used") ||
+              message.toLowerCase().includes("unique")
+              ? 409
+              : 500,
           );
         }
-        proofUpdate.safaricom_imei = imei;
-      } else {
+
+        if (lead.assigned_agent_id) {
+          const { error: notifyError } = await service.from("notifications").insert({
+            agent_id: lead.assigned_agent_id,
+            related_id: leadId,
+            title: "Order ID logged",
+            message: `Customer '${lead.customer_name}' is installed on your side and waiting for confirmation.`,
+            type: "LEAD_INSTALLED",
+            is_read: false,
+            metadata: {
+              leadId,
+              status: "installed",
+              product: "airtel",
+            },
+          });
+          if (notifyError) {
+            console.error("lead-outcome order id notify:", notifyError);
+          }
+        }
+
+        return jsonResponse({ success: true, status: "installed" });
+      }
+
+      if (lead.product !== "safaricom") {
         return jsonResponse(
           { error: "Unknown product — cannot mark installed" },
           400,
         );
       }
 
+      const imei = String(body.safaricomImei ?? "").trim();
+      if (!imei) {
+        return jsonResponse(
+          { error: "safaricomImei is required for Safaricom install" },
+          400,
+        );
+      }
+
       const { error: updateError } = await service
         .from("inbound_leads")
-        .update(proofUpdate)
+        .update({
+          status: "pending_install",
+          safaricom_imei: imei,
+          commission_earned_ksh: null,
+          metadata: {
+            ...prevMetadata,
+            installProof: {
+              submittedAt: now,
+              agentId: user.id,
+            },
+          },
+        })
         .eq("id", leadId);
 
       if (updateError) {
         console.error("lead-outcome install proof:", updateError);
-        return jsonResponse(
-          {
-            error:
-              lead.product === "airtel"
-                ? "Failed to save SR number"
-                : "Failed to save IMEI",
-          },
-          500,
-        );
+        return jsonResponse({ error: "Failed to save IMEI" }, 500);
       }
 
       return jsonResponse({

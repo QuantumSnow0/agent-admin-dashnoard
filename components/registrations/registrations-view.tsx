@@ -21,6 +21,8 @@ type RegistrationCounts = {
   all: number;
   pending: number;
   installed: number;
+  approved: number;
+  denied: number;
   closed: number;
   rejected: number;
   duplicate: number;
@@ -187,6 +189,12 @@ export function RegistrationsView({
               <Package className="mr-1.5 h-3.5 w-3.5" />
               Installed ({counts.installed})
             </TabsTrigger>
+            <TabsTrigger value="approved" className="rounded-md px-3 text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm">
+              Approved ({counts.approved})
+            </TabsTrigger>
+            <TabsTrigger value="denied" className="rounded-md px-3 text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm">
+              Denied ({counts.denied})
+            </TabsTrigger>
             <TabsTrigger value="closed" className="rounded-md px-3 text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm">
               <XCircle className="mr-1.5 h-3.5 w-3.5" />
               Closed ({counts.closed})
@@ -269,6 +277,14 @@ export function RegistrationsView({
                         className="cursor-pointer border-b border-gray-100 last:border-b-0 hover:bg-gray-50/50"
                         onClick={() => openDetail(reg)}
                         onKeyDown={(e) => {
+                          const target = e.target as HTMLElement;
+                          if (
+                            target.closest(
+                              "input, textarea, select, [contenteditable='true']"
+                            )
+                          ) {
+                            return;
+                          }
                           if (e.key === "Enter" || e.key === " ") {
                             e.preventDefault();
                             openDetail(reg);

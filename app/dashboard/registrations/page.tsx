@@ -93,6 +93,8 @@ export default async function RegistrationsPage({ searchParams }: RegistrationsP
     { count: safCancelled },
     { count: custInstalled },
     { count: safInstalled },
+    { count: custApproved },
+    { count: custDenied },
     { count: airtelQueueCount },
   ] = await Promise.all([
     customerQuery,
@@ -110,6 +112,8 @@ export default async function RegistrationsPage({ searchParams }: RegistrationsP
     supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }).eq("status", "cancelled"),
     supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("commission_exempt", false).eq("status", "installed"),
     supabase.from("safaricom_registrations").select("*", { count: "exact", head: true }).eq("status", "installed"),
+    supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("commission_exempt", false).eq("status", "approved"),
+    supabase.from("customer_registrations").select("*", { count: "exact", head: true }).eq("commission_exempt", false).eq("status", "denied"),
     supabase
       .from("customer_registrations")
       .select("*", { count: "exact", head: true })
@@ -122,7 +126,7 @@ export default async function RegistrationsPage({ searchParams }: RegistrationsP
   const rejectedCount = (custRejected ?? 0) + (safRejected ?? 0);
   const duplicateCount = (custDuplicate ?? 0) + (safDuplicate ?? 0);
   const cancelledCount = (custCancelled ?? 0) + (safCancelled ?? 0);
-  const closedCount = rejectedCount + duplicateCount + cancelledCount;
+  const closedCount = rejectedCount + duplicateCount + cancelledCount + (custDenied ?? 0);
   const installedCount = (custInstalled ?? 0) + (safInstalled ?? 0);
   const airtelMsFormsQueueCount = airtelQueueCount ?? 0;
 
@@ -162,7 +166,7 @@ export default async function RegistrationsPage({ searchParams }: RegistrationsP
         <h1 className="text-xl font-bold tracking-tight text-gray-900">Customer Registrations</h1>
       </div>
       <p className="text-sm text-gray-600">
-        Pending = awaiting outcome. Installed = commission earned. Use Rejected, Duplicate, or Cancelled when the order will not be installed.
+        Pending means the customer is logged and has no Order ID. Installed means the Order ID is logged and payment is waiting. Approve with a custom amount, or deny with a reason.
         Airtel queue = not yet submitted to Microsoft Forms — submit from the detail panel if auto-submit fails.
       </p>
 
@@ -203,6 +207,8 @@ export default async function RegistrationsPage({ searchParams }: RegistrationsP
           all: totalCount,
           pending: pendingCount,
           installed: installedCount,
+          approved: custApproved ?? 0,
+          denied: custDenied ?? 0,
           closed: closedCount,
           rejected: rejectedCount,
           duplicate: duplicateCount,

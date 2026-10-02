@@ -1,15 +1,10 @@
 /**
- * Flat commission for inbound-lead installations (KSh).
+ * Inbound-lead payment display.
  * Keep in sync with airtel-agent-app/lib/commissions/leadInstallCommission.ts
  *
- * Website / marketing leads: LEAD_INSTALL_COMMISSION_KES (200).
- * Agent-submitted (non-installer) leads: package-specific receiver fee from
- * dispatch_config — 0 means hide in app and store no install commission.
+ * Approved payment is the custom amount stored on the lead. There is no
+ * fixed website-lead fee.
  */
-
-import { LEAD_INSTALL_COMMISSION_KES } from "@/lib/dispatch/constants";
-
-export { LEAD_INSTALL_COMMISSION_KES };
 
 export type LeadPackageFeeKey = "standard" | "premium";
 
@@ -74,7 +69,7 @@ export function resolveLeadInstallDisplayKes(opts: {
     if (n <= 0) return null;
     return n;
   }
-  return LEAD_INSTALL_COMMISSION_KES;
+  return null;
 }
 
 /** Amount to store when admin confirms install (0 allowed for agent_own). */
@@ -97,15 +92,21 @@ export function resolveLeadInstallConfirmKes(opts: {
     if (!Number.isFinite(n) || n < 0) return 0;
     return Math.round(n);
   }
-  return LEAD_INSTALL_COMMISSION_KES;
+  return 0;
 }
 
 export function getLeadInstallCommissionKes(row: {
   commission_earned_ksh?: number | string | null;
   status?: string | null;
 }): number {
-  // Commission only after admin confirms (status installed + amount stored).
-  if (row.status != null && row.status !== "installed") return 0;
+  // Commission only after payment is approved, or on older installed rows.
+  if (
+    row.status != null &&
+    row.status !== "installed" &&
+    row.status !== "approved"
+  ) {
+    return 0;
+  }
   const stored = Number(row.commission_earned_ksh);
   if (Number.isFinite(stored) && stored > 0) return Math.round(stored);
   return 0;

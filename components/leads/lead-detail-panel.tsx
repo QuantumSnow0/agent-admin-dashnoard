@@ -30,7 +30,6 @@ import { formatDistanceKm } from "@/lib/dispatch/geo";
 import { getLeadReleaseInfo } from "@/lib/lead-release";
 import {
   getLeadInstallCommissionKes,
-  resolveLeadInstallDisplayKes,
   type LeadPackageFees,
 } from "@/lib/lead-install-commission";
 import { LeadInstallStatusActions } from "@/components/leads/lead-install-status-actions";
@@ -44,7 +43,9 @@ const STATUS_STYLES: Record<string, string> = {
   kyc_in_progress: "bg-violet-100 text-violet-800 border-violet-200",
   kyc_completed: "bg-emerald-100 text-emerald-800 border-emerald-200",
   pending_install: "bg-amber-100 text-amber-900 border-amber-200",
-  installed: "bg-green-100 text-green-800 border-green-200",
+  installed: "bg-sky-100 text-sky-800 border-sky-200",
+  approved: "bg-green-100 text-green-800 border-green-200",
+  denied: "bg-red-100 text-red-800 border-red-200",
   lost: "bg-gray-100 text-gray-700 border-gray-200",
   expired: "bg-gray-100 text-gray-600 border-gray-200",
   deferred: "bg-indigo-100 text-indigo-900 border-indigo-200",
@@ -520,7 +521,7 @@ export function LeadDetailPanel({
 
             <SectionTitle>Install proof</SectionTitle>
             {lead.product === "airtel" ? (
-              <Field label="Airtel SR number" value={lead.airtel_sr_number} />
+              <Field label="Order ID" value={lead.airtel_sr_number} />
             ) : (
               <Field label="Device IMEI" value={lead.safaricom_imei} />
             )}
@@ -528,20 +529,25 @@ export function LeadDetailPanel({
               <Field label="Installed at" value={formatWhen(lead.installed_at)} />
             ) : null}
             {lead.status === "pending_install" ? (
-              <Field
-                label="Commission"
-                value={(() => {
-                  const earn = resolveLeadInstallDisplayKes({
-                    source: lead.source,
-                    submitted_by_agent_id: lead.submitted_by_agent_id,
-                    preferredPackage: lead.plan_label ?? lead.preferred_package,
-                    receiverFees: resolvedReceiverFees,
-                  });
-                  return earn != null
-                    ? `Awaiting admin confirm (KSh ${earn.toLocaleString()})`
-                    : "Awaiting admin confirm (no fee set)";
-                })()}
-              />
+              <Field label="Payment" value="Waiting for confirmation" />
+            ) : null}
+            {lead.status === "approved" ? (
+              <>
+                <Field
+                  label="Approved amount"
+                  value={
+                    getLeadInstallCommissionKes(lead) > 0
+                      ? `KSh ${getLeadInstallCommissionKes(lead).toLocaleString()}`
+                      : "—"
+                  }
+                />
+                {lead.mpesa_reference ? (
+                  <Field label="M-Pesa reference" value={lead.mpesa_reference} />
+                ) : null}
+              </>
+            ) : null}
+            {lead.status === "denied" && lead.denial_reason ? (
+              <Field label="Denial reason" value={lead.denial_reason} />
             ) : null}
             {lead.status === "installed" ? (
               getLeadInstallCommissionKes(lead) > 0 ? (

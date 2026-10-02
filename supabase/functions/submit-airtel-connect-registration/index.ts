@@ -9,6 +9,7 @@ const corsHeaders = {
 
 type Body = {
   clientHandoffId?: string;
+  entryPath?: string;
   customerName?: string;
   phoneNumber?: string;
   email?: string;
@@ -16,6 +17,7 @@ type Body = {
   unitsRequired?: number;
   installationTown?: string;
   landmark?: string;
+  airtelConnectOrderId?: string;
 };
 
 function text(v: unknown): string {
@@ -52,6 +54,9 @@ Deno.serve(async (req) => {
 
     const body = (await req.json().catch(() => ({}))) as Body;
     const clientHandoffId = text(body.clientHandoffId);
+    const entryPathRaw = text(body.entryPath).toLowerCase();
+    const entryPath =
+      entryPathRaw === "connect_first" ? "connect_first" : "wam_first";
     const customerName = text(body.customerName);
     const phone = normalizeKenyanPhone(body.phoneNumber);
     const email = text(body.email);
@@ -59,6 +64,7 @@ Deno.serve(async (req) => {
     const unitsRequired = Number(body.unitsRequired);
     const installationTown = text(body.installationTown);
     const landmark = text(body.landmark);
+    const airtelConnectOrderId = text(body.airtelConnectOrderId);
 
     if (!clientHandoffId || clientHandoffId.length < 8) {
       return new Response(
@@ -77,6 +83,9 @@ Deno.serve(async (req) => {
     }
     if (!installationTown) missing.push("installationTown");
     if (!landmark) missing.push("landmark");
+    if (entryPath === "connect_first" && airtelConnectOrderId.length < 3) {
+      missing.push("airtelConnectOrderId");
+    }
     if (missing.length > 0) {
       return new Response(
         JSON.stringify({ error: "Validation failed", fields: missing }),
@@ -150,7 +159,7 @@ Deno.serve(async (req) => {
 
     const { data: existing } = await admin
       .from("customer_registrations")
-      .select("id, airtel_connect_handoff_status")
+      .select("id, airtel_connect_handoff_status, airtel_connect_order_id")
       .eq("agent_id", user.id)
       .eq("client_handoff_id", clientHandoffId)
       .maybeSingle();
@@ -162,36 +171,71 @@ Deno.serve(async (req) => {
           registrationId: existing.id,
           idempotentReplay: true,
           handoffStatus: existing.airtel_connect_handoff_status,
+          airtelConnectOrderId: existing.airtel_connect_order_id,
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
+    const insertRow: Record<string, unknown> = {
+      agent_id: user.id,
+      customer_name: customerName,
+      airtel_number: phone,
+      email,
+      preferred_package: preferredPackage,
+      units_required: unitsRequired,
+      installation_town: installationTown,
+      installation_location: installationTown,
+      delivery_landmark: landmark,
+      registration_workflow: "airtel_connect",
+      airtel_connect_entry: entryPath,
+      client_handoff_id: clientHandoffId,
+      airtel_connect_handoff_status:
+        entryPath === "connect_first" ? null : "pending",
+      status: "pending",
+    };
+    if (airtelConnectOrderId) {
+      const { data: orderIdUsed, error: usedError } = await admin.rpc(
+        "airtel_order_id_is_used",
+        { p_order_id: airtelConnectOrderId },
+      );
+      if (usedError) {
+        console.error("airtel_order_id_is_used:", usedError.message);
+        return new Response(
+          JSON.stringify({ error: "Could not check Order ID" }),
+          { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      if (orderIdUsed === true) {
+        return new Response(
+          JSON.stringify({ error: "This Order ID is already used" }),
+          { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      insertRow.airtel_connect_order_id = airtelConnectOrderId;
+      insertRow.status = "installed";
+    }
+
     const { data: inserted, error: insertError } = await admin
       .from("customer_registrations")
-      .insert({
-        agent_id: user.id,
-        customer_name: customerName,
-        airtel_number: phone,
-        email,
-        preferred_package: preferredPackage,
-        units_required: unitsRequired,
-        installation_town: installationTown,
-        installation_location: installationTown,
-        delivery_landmark: landmark,
-        registration_workflow: "airtel_connect",
-        client_handoff_id: clientHandoffId,
-        airtel_connect_handoff_status: "pending",
-        status: "pending",
-      })
+      .insert(insertRow)
       .select("id")
       .single();
 
     if (insertError) {
+      if (
+        insertError.code === "23505" &&
+        insertError.message.toLowerCase().includes("order_id")
+      ) {
+        return new Response(
+          JSON.stringify({ error: "This Order ID is already used" }),
+          { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
       if (insertError.code === "23505") {
         const { data: raced } = await admin
           .from("customer_registrations")
-          .select("id, airtel_connect_handoff_status")
+          .select("id, airtel_connect_handoff_status, airtel_connect_order_id")
           .eq("agent_id", user.id)
           .eq("client_handoff_id", clientHandoffId)
           .maybeSingle();
@@ -202,6 +246,7 @@ Deno.serve(async (req) => {
               registrationId: raced.id,
               idempotentReplay: true,
               handoffStatus: raced.airtel_connect_handoff_status,
+              airtelConnectOrderId: raced.airtel_connect_order_id,
             }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
           );
@@ -219,6 +264,7 @@ Deno.serve(async (req) => {
         success: true,
         registrationId: inserted.id,
         idempotentReplay: false,
+        entryPath,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );

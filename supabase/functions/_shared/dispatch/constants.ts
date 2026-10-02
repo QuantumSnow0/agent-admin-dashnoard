@@ -27,11 +27,10 @@ export const ACTIVE_LEAD_STATUSES = [
 export const TERMINAL_LEAD_STATUSES = [
   "pending_install",
   "installed",
+  "approved",
+  "denied",
   "lost",
   "expired",
 ] as const;
 
 export const NOTIFICATION_TYPE_LEAD_OFFER = "LEAD_OFFER";
-
-/** Flat commission when an inbound lead is marked installed (agent SR/IMEI proof). */
-export const LEAD_INSTALL_COMMISSION_KES = 200;
