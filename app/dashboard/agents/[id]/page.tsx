@@ -47,7 +47,7 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
 
   const { data: agent, error } = await supabase
     .from("agents")
-    .select("id, name, email, airtel_phone, safaricom_phone, town, area, status, created_at, total_earnings, available_balance, lead_dispatch_scope, is_fallback_agent, fallback_priority, working_place, working_place_updated_at")
+    .select("id, name, email, airtel_phone, safaricom_phone, town, area, status, created_at, total_earnings, available_balance, lead_dispatch_scope, is_installer, is_fallback_agent, fallback_priority, working_place, working_place_updated_at")
     .eq("id", id)
     .single();
 
@@ -186,6 +186,11 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
               >
                 {agent.status}
               </span>
+              {agent.is_installer === false ? (
+                <span className="shrink-0 rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
+                  Non-installer
+                </span>
+              ) : null}
             </div>
             <p className="mt-0.5 truncate text-xs text-gray-500">
               {contactParts.length ? contactParts.join(" · ") : "No contact info"}
@@ -206,6 +211,7 @@ export default async function AgentProfilePage({ params }: AgentProfilePageProps
                 email: agent.email ?? "",
                 status: agent.status,
                 lead_dispatch_scope: agent.lead_dispatch_scope ?? "none",
+                is_installer: agent.is_installer !== false,
               }}
             />
           </div>

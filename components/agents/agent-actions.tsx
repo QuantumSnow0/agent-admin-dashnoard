@@ -24,6 +24,7 @@ import {
   Smartphone,
   Undo2,
   Inbox,
+  Wrench,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { LEAD_DISPATCH_SCOPES } from "@/lib/dispatch/constants";
@@ -43,6 +44,7 @@ interface AgentActionsProps {
     status: string;
     airtel_connect_opened?: boolean;
     lead_dispatch_scope?: string;
+    is_installer?: boolean;
   };
 }
 
@@ -51,6 +53,7 @@ export function AgentActions({ agent }: AgentActionsProps) {
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [scope, setScope] = useState(agent.lead_dispatch_scope ?? "none");
+  const [installer, setInstaller] = useState(agent.is_installer !== false);
 
   const handleStatusChange = async (newStatus: string) => {
     setActionLoading(newStatus);
@@ -109,6 +112,28 @@ export function AgentActions({ agent }: AgentActionsProps) {
       router.refresh();
     } catch (err) {
       alert(err instanceof Error ? err.message : "Could not update inbound leads");
+    } finally {
+      setLoading(false);
+      setActionLoading(null);
+    }
+  };
+
+  const handleInstaller = async (next: boolean) => {
+    if (next === installer || loading) return;
+    setActionLoading(next ? "mark_installer" : "mark_non_installer");
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/agents/${agent.id}/installer`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ installer: next }),
+      });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Failed to update installer status");
+      setInstaller(next);
+      router.refresh();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Could not update installer status");
     } finally {
       setLoading(false);
       setActionLoading(null);
@@ -268,6 +293,29 @@ export function AgentActions({ agent }: AgentActionsProps) {
             ))}
           </DropdownMenuSubContent>
         </DropdownMenuSub>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel className="text-xs font-normal text-gray-500">
+          Installer
+        </DropdownMenuLabel>
+        {installer ? (
+          <DropdownMenuItem
+            onClick={() => void handleInstaller(false)}
+            disabled={loading}
+            className="text-gray-800 focus:text-gray-800"
+          >
+            <Wrench className="mr-2 h-4 w-4" />
+            {actionLoading === "mark_non_installer" ? "Saving…" : "Mark as non-installer"}
+          </DropdownMenuItem>
+        ) : (
+          <DropdownMenuItem
+            onClick={() => void handleInstaller(true)}
+            disabled={loading}
+            className="text-gray-800 focus:text-gray-800"
+          >
+            <Wrench className="mr-2 h-4 w-4" />
+            {actionLoading === "mark_installer" ? "Saving…" : "Mark as installer"}
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuLabel className="text-xs font-normal text-gray-500">
           Airtel Connect app

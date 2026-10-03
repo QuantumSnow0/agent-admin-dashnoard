@@ -29,6 +29,7 @@ type AgentRow = {
   airtel_connect_opened?: boolean | null;
   airtel_connect_opened_at?: string | null;
   lead_dispatch_scope?: string | null;
+  is_installer?: boolean | null;
   app_rating?: {
     score: number;
     created_at: string;
@@ -223,10 +224,19 @@ export function AgentsView({
                   >
                     <div className="col-span-3 min-w-0">
                       <div className="truncate font-medium">{a.name || "—"}</div>
-                      {a.airtel_connect_opened ? (
-                        <span className="mt-0.5 inline-flex rounded bg-white/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
-                          Connect opened
-                        </span>
+                      {a.airtel_connect_opened || a.is_installer === false ? (
+                        <div className="mt-0.5 flex flex-wrap gap-1">
+                          {a.airtel_connect_opened ? (
+                            <span className="inline-flex rounded bg-white/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                              Connect opened
+                            </span>
+                          ) : null}
+                          {a.is_installer === false ? (
+                            <span className="inline-flex rounded bg-white/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                              Non-installer
+                            </span>
+                          ) : null}
+                        </div>
                       ) : null}
                     </div>
                     <div className="col-span-2 truncate text-white/90">{a.email || "—"}</div>
@@ -257,6 +267,7 @@ export function AgentsView({
                           status: a.status,
                           airtel_connect_opened: a.airtel_connect_opened === true,
                           lead_dispatch_scope: a.lead_dispatch_scope ?? "none",
+                          is_installer: a.is_installer !== false,
                         }}
                       />
                     </div>

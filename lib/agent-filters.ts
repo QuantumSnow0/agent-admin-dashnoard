@@ -3,6 +3,7 @@ export const AGENT_FILTER_KEYS = [
   "town",
   "area",
   "connect",
+  "role",
   "joined",
   "rating",
   "location",
@@ -47,6 +48,15 @@ export const AGENT_FILTERS: AgentFilterDefinition[] = [
     options: [
       { value: "opened", label: "Connect opened" },
       { value: "not_opened", label: "Connect not opened" },
+    ],
+  },
+  {
+    key: "role",
+    label: "Installer",
+    multiple: false,
+    options: [
+      { value: "installer", label: "Installer" },
+      { value: "non_installer", label: "Non-installer" },
     ],
   },
   {

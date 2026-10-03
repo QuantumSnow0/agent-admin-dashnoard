@@ -56,6 +56,7 @@ export default async function AgentsPage({ searchParams }: AgentsPageProps) {
   const towns = allParams(params.town);
   const areas = allParams(params.area);
   const connectFilter = firstParam(params.connect).toLowerCase();
+  const roleFilter = firstParam(params.role).toLowerCase();
   const joinedFilter = firstParam(params.joined);
   const ratingFilter = firstParam(params.rating);
   const locationFilter = firstParam(params.location);
@@ -112,7 +113,7 @@ export default async function AgentsPage({ searchParams }: AgentsPageProps) {
   let agentsQuery = supabase
     .from("agents")
     .select(
-      "id, name, email, airtel_phone, safaricom_phone, town, area, status, created_at, airtel_connect_opened, airtel_connect_opened_at, lead_dispatch_scope",
+      "id, name, email, airtel_phone, safaricom_phone, town, area, status, created_at, airtel_connect_opened, airtel_connect_opened_at, lead_dispatch_scope, is_installer",
       { count: "exact" },
     )
     .order("created_at", { ascending: false });
@@ -136,6 +137,11 @@ export default async function AgentsPage({ searchParams }: AgentsPageProps) {
     agentsQuery = agentsQuery.eq("airtel_connect_opened", true);
   } else if (connectFilter === "not_opened") {
     agentsQuery = agentsQuery.eq("airtel_connect_opened", false);
+  }
+  if (roleFilter === "installer") {
+    agentsQuery = agentsQuery.eq("is_installer", true);
+  } else if (roleFilter === "non_installer") {
+    agentsQuery = agentsQuery.eq("is_installer", false);
   }
   if (dateFrom) {
     agentsQuery = agentsQuery.gte("created_at", `${dateFrom}T00:00:00.000Z`);
