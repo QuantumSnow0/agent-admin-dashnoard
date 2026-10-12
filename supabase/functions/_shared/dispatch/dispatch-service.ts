@@ -256,16 +256,13 @@ export async function dispatchLead(
     await expireStaleOffers(service, dispatchLead);
   }
 
-  const config = await loadDispatchConfig(service);
+  const [config, { data: lead, error: leadError }] = await Promise.all([
+    loadDispatchConfig(service),
+    service.from("inbound_leads").select("*").eq("id", leadId).single(),
+  ]);
   if (!config.dispatch_enabled) {
     return { outcome: "skipped", reason: "dispatch_disabled" };
   }
-
-  const { data: lead, error: leadError } = await service
-    .from("inbound_leads")
-    .select("*")
-    .eq("id", leadId)
-    .single();
 
   if (leadError || !lead) {
     return { outcome: "skipped", reason: "lead_not_found" };
@@ -275,7 +272,13 @@ export async function dispatchLead(
     return { outcome: "skipped", reason: `status_${lead.status}` };
   }
 
-  const locationRefs = await loadLocationRefs(service);
+  // These reads do not depend on each other; fetch them together.
+  const [locationRefs, agents, openCounts, excluded] = await Promise.all([
+    loadLocationRefs(service),
+    loadEligibleAgents(service),
+    loadOpenLeadCounts(service),
+    loadExcludedAgentIds(service, leadId),
+  ]);
   const googlePlace = googlePlaceFromLeadMetadata(lead.metadata);
   const townResolved = resolveLeadPoint(lead.installation_town ?? "", locationRefs);
   const county =
@@ -286,9 +289,6 @@ export async function dispatchLead(
   const defaultRadiusKm = config.default_service_radius_km;
   const product = lead.product as "airtel" | "safaricom";
 
-  const agents = await loadEligibleAgents(service);
-  const openCounts = await loadOpenLeadCounts(service);
-  const excluded = await loadExcludedAgentIds(service, leadId);
   for (const id of options?.excludeAgentIds ?? []) {
     excluded.add(id);
   }

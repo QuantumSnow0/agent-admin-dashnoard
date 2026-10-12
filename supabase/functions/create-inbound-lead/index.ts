@@ -1,8 +1,14 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { handleCorsPreflight, jsonResponse } from "../_shared/dispatch/cors.ts";
-import { dispatchLead } from "../_shared/dispatch/dispatch-service.ts";
+import { dispatchLead, loadDispatchConfig } from "../_shared/dispatch/dispatch-service.ts";
+import { expireStaleOffers } from "../_shared/dispatch/expire-offers.ts";
 import { normalizePhoneKey } from "../_shared/dispatch/geo.ts";
+import {
+  BLOCKING_LEAD_STATUSES,
+  isUniqueViolation,
+  planInboundWrite,
+} from "../_shared/dispatch/inbound-write.ts";
 
 /**
  * create-inbound-lead (v1)
@@ -42,6 +48,17 @@ type InboundBody = {
 
 const VALID_SOURCES = new Set(["airtel5grouter", "internetkenya", "agent_own"]);
 const VALID_PRODUCTS = new Set(["airtel", "safaricom"]);
+
+/**
+ * Keep working after the response is sent. The website only needs the saved
+ * lead id; agent matching and push delivery continue here, in the same order
+ * and with the same code as before, without the customer waiting on them.
+ */
+function continueInBackground(task: () => Promise<unknown>): void {
+  const work = task().catch((err) => console.error("create-inbound-lead background:", err));
+  const runtime = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime;
+  if (runtime?.waitUntil) runtime.waitUntil(work);
+}
 
 function verifyApiKey(req: Request): boolean {
   const expected = Deno.env.get("INBOUND_LEAD_API_KEY");
@@ -88,40 +105,54 @@ Deno.serve(async (req) => {
     }
 
     const dedupeKey = normalizePhoneKey(primaryPhone);
+    const externalId = body.sourceExternalId?.trim() || null;
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const service = createClient(supabaseUrl, serviceKey);
 
-    // Dedupe: block if same phone has an active lead in flight
-    const blockingStatuses = [
-      "pending_dispatch",
-      "offered",
-      "assigned",
-      "kyc_in_progress",
-      "kyc_completed",
-      "needs_reassignment",
-      "admin_queue",
-      "deferred",
-    ];
-    const { data: existing } = await service
-      .from("inbound_leads")
-      .select("id, status")
-      .eq("dedupe_phone_key", dedupeKey)
-      .in("status", blockingStatuses)
-      .limit(1)
-      .maybeSingle();
+    // Independent lookups run together instead of one after another.
+    const [externalLookup, phoneLookup, dispatchConfig] = await Promise.all([
+      externalId
+        ? service
+            .from("inbound_leads")
+            .select("id, status")
+            .eq("source", source)
+            .eq("source_external_id", externalId)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+      service
+        .from("inbound_leads")
+        .select("id, status")
+        .eq("dedupe_phone_key", dedupeKey)
+        .in("status", [...BLOCKING_LEAD_STATUSES])
+        .limit(1)
+        .maybeSingle(),
+      loadDispatchConfig(service),
+    ]);
+    const existingByExternalId = externalLookup.data;
+    const existingByPhone = phoneLookup.data;
 
-    if (existing) {
+    const decision = planInboundWrite({
+      externalId,
+      existingByExternalId,
+      existingByPhone,
+    });
+    if (decision.action === "replay") {
       return jsonResponse({
-        success: false,
+        success: true,
         duplicate: true,
-        existingLeadId: existing.id,
-        message: "An active lead already exists for this phone number",
-      }, 409);
+        leadId: decision.leadId,
+        existingLeadId: decision.leadId,
+        status: decision.status,
+        dispatch: { outcome: "skipped", reason: "duplicate_submission" },
+      });
     }
-
-    const metadata = body.metadata ?? {};
+    const metadata: Record<string, unknown> = { ...(body.metadata ?? {}) };
+    if (decision.action === "insert" && decision.duplicateOfLeadId) {
+      metadata.duplicateOfLeadId = decision.duplicateOfLeadId;
+      metadata.duplicateMatch = "phone";
+    }
     const msFromMeta = metadata.msFormsResponseId;
     const msFormsResponseIdRaw =
       body.msFormsResponseId ?? msFromMeta ?? null;
@@ -136,7 +167,7 @@ Deno.serve(async (req) => {
 
     const row = {
       source,
-      source_external_id: body.sourceExternalId ?? null,
+      source_external_id: externalId,
       product,
       status: "pending_dispatch",
       county: body.county?.trim() || null,
@@ -167,17 +198,49 @@ Deno.serve(async (req) => {
       .select("id")
       .single();
 
+    if (isUniqueViolation(insertError) && externalId) {
+      const { data: raced } = await service
+        .from("inbound_leads")
+        .select("id, status")
+        .eq("source", source)
+        .eq("source_external_id", externalId)
+        .maybeSingle();
+      if (raced) {
+        return jsonResponse({
+          success: true,
+          duplicate: true,
+          leadId: raced.id,
+          existingLeadId: raced.id,
+          status: raced.status,
+          dispatch: { outcome: "skipped", reason: "duplicate_submission" },
+        });
+      }
+    }
+
     if (insertError || !lead) {
       console.error("insert inbound_leads:", insertError);
       return jsonResponse({ error: "Failed to create lead" }, 500);
     }
 
-    const dispatchResult = await dispatchLead(service, lead.id);
+    const flaggedDuplicate = decision.action === "insert" && Boolean(decision.duplicateOfLeadId);
+
+    // The lead is saved; answer the website now. Matching the agent, the
+    // push notification, and the stale-offer sweep continue after the response.
+    const dispatch = dispatchConfig.dispatch_enabled
+      ? { outcome: "queued", reason: "background_dispatch" }
+      : { outcome: "skipped", reason: "dispatch_disabled" };
+
+    continueInBackground(async () => {
+      await dispatchLead(service, lead.id, { skipSweep: true });
+      await expireStaleOffers(service, dispatchLead);
+    });
 
     return jsonResponse({
       success: true,
       leadId: lead.id,
-      dispatch: dispatchResult,
+      duplicate: flaggedDuplicate,
+      matchedLeadId: flaggedDuplicate ? decision.duplicateOfLeadId : null,
+      dispatch,
     });
   } catch (err) {
     console.error("create-inbound-lead:", err);
