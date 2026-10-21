@@ -89,3 +89,9 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/admin-send-sms/deno.json"
 entrypoint = "./functions/admin-send-sms/index.ts"
+
+[functions.process-customer-assignment-sms]
+enabled = true
+verify_jwt = false
+import_map = "./functions/process-customer-assignment-sms/deno.json"
+entrypoint = "./functions/process-customer-assignment-sms/index.ts"
