@@ -5,6 +5,81 @@
 
 export const SMS_MAX_ATTEMPTS = 5;
 
+/** Same Onfon endpoint the other WAM Apps SMS functions use. Credentials are separate. */
+export const AIRTEL_SMS_ONFON_URL = "https://api.onfonmedia.co.ke/v1/sms/SendBulkSMS";
+
+export const AIRTEL_SMS_CREDENTIAL_NAMES = [
+  "AIRTEL_SMS_API_KEY",
+  "AIRTEL_SMS_CLIENT_ID",
+  "AIRTEL_SMS_ACCESS_KEY",
+  "AIRTEL_SMS_SENDER_ID",
+] as const;
+
+export type AirtelSmsCredentials = {
+  apiKey: string;
+  clientId: string;
+  accessKey: string;
+  senderId: string;
+};
+
+/**
+ * Reads only the dedicated Airtel customer-SMS account.
+ * A missing value stays missing. WAM Apps ONFON_* secrets are not consulted.
+ */
+export function readAirtelSmsCredentials(
+  read: (name: string) => string | undefined,
+): AirtelSmsCredentials | null {
+  const [apiKey, clientId, accessKey, senderId] = AIRTEL_SMS_CREDENTIAL_NAMES.map(
+    (name) => read(name)?.trim() ?? "",
+  );
+  if (!apiKey || !clientId || !accessKey || !senderId) return null;
+  return { apiKey, clientId, accessKey, senderId };
+}
+
+export function buildAirtelSmsRequest(
+  credentials: AirtelSmsCredentials,
+  phone: string,
+  text: string,
+  unicode: boolean,
+) {
+  return {
+    url: AIRTEL_SMS_ONFON_URL,
+    method: "POST" as const,
+    headers: {
+      "Content-Type": "application/json",
+      AccessKey: credentials.accessKey,
+    },
+    body: {
+      SenderId: credentials.senderId,
+      IsUnicode: unicode,
+      IsFlash: false,
+      MessageParameters: [{ Number: phone, Text: text }],
+      ApiKey: credentials.apiKey,
+      ClientId: credentials.clientId,
+    },
+  };
+}
+
+/**
+ * Missing dedicated credentials must not claim or send.
+ * The outbox row stays pending, so a later run can send it once the secrets exist.
+ */
+export function holdForMissingAirtelSmsConfig(): {
+  claim: false;
+  send: false;
+  fallbackToWamApps: false;
+  preserveQueue: true;
+  category: "airtel_sms_not_configured";
+} {
+  return {
+    claim: false,
+    send: false,
+    fallbackToWamApps: false,
+    preserveQueue: true,
+    category: "airtel_sms_not_configured",
+  };
+}
+
 const GSM_7_BASIC =
   "@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !\"#¤%&'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà";
 const GSM_7_EXT = "^{}\\[~]|€";

@@ -1,11 +1,17 @@
+import { readFileSync } from "node:fs";
 import {
   acceptanceSurvivesEnqueueFailure,
+  AIRTEL_SMS_CREDENTIAL_NAMES,
+  AIRTEL_SMS_ONFON_URL,
+  buildAirtelSmsRequest,
   classifyOnfonResponse,
   composeAssignmentSms,
   customerFirstName,
   decideAfterProviderResult,
+  holdForMissingAirtelSmsConfig,
   isAirtel5gWebsiteLead,
   normalizeKenyanMobile,
+  readAirtelSmsCredentials,
   recoverExpiredClaim,
   selectAgentPhones,
   smsSegments,
@@ -100,6 +106,86 @@ assert(acceptanceSurvivesEnqueueFailure(() => {}).queued, "a successful enqueue 
 
 assert(recoverExpiredClaim(null) === "pending", "a crash before Onfon can be retried");
 assert(recoverExpiredClaim("2026-10-22T00:00:00Z") === "ambiguous", "a crash after Onfon starts is not retried");
+
+const dedicatedEnv: Record<string, string> = {
+  AIRTEL_SMS_API_KEY: "dedicated-api-key",
+  AIRTEL_SMS_CLIENT_ID: "dedicated-client-id",
+  AIRTEL_SMS_ACCESS_KEY: "dedicated-access-key",
+  AIRTEL_SMS_SENDER_ID: "Airtel-5G",
+  ONFON_API_KEY: "wam-api-key",
+  ONFON_CLIENT_ID: "wam-client-id",
+  ONFON_ACCESS_KEY: "wam-access-key",
+  ONFON_SENDER_ID: "Wam-Apps",
+};
+const requested: string[] = [];
+const dedicated = readAirtelSmsCredentials((name) => {
+  requested.push(name);
+  return dedicatedEnv[name];
+});
+assert(dedicated !== null, "complete dedicated credentials are accepted");
+assert(
+  requested.length === AIRTEL_SMS_CREDENTIAL_NAMES.length &&
+    requested.every((name) => name.startsWith("AIRTEL_SMS_")) &&
+    !requested.some((name) => name.startsWith("ONFON_")),
+  "credential lookup never reads the WAM Apps account",
+);
+assert(dedicated?.apiKey === "dedicated-api-key", "the dedicated API key is the one used");
+assert(dedicated?.senderId === "Airtel-5G", "the dedicated sender id is the one used");
+
+const request = buildAirtelSmsRequest(dedicated!, "254712345678", "Hi Jane", false);
+assert(request.url === AIRTEL_SMS_ONFON_URL, "the Onfon endpoint is unchanged");
+assert(request.url === "https://api.onfonmedia.co.ke/v1/sms/SendBulkSMS", "the Onfon path is SendBulkSMS");
+assert(request.method === "POST", "the Onfon method stays POST");
+assert(request.headers.AccessKey === "dedicated-access-key", "AccessKey comes from the dedicated account");
+assert(request.headers.AccessKey !== "wam-access-key", "the WAM Apps access key is not sent");
+assert(request.body.ApiKey === "dedicated-api-key", "ApiKey comes from the dedicated account");
+assert(request.body.ClientId === "dedicated-client-id", "ClientId comes from the dedicated account");
+assert(request.body.SenderId === "Airtel-5G", "SenderId comes from the dedicated account");
+assert(request.body.IsUnicode === false && request.body.IsFlash === false, "unicode and flash flags stay compatible");
+assert(
+  request.body.MessageParameters.length === 1 &&
+    request.body.MessageParameters[0]?.Number === "254712345678" &&
+    request.body.MessageParameters[0]?.Text === "Hi Jane",
+  "the message body keeps one Number and Text parameter",
+);
+
+const wamOnly = readAirtelSmsCredentials((name) =>
+  name.startsWith("ONFON_") ? dedicatedEnv[name] : "   ",
+);
+assert(wamOnly === null, "WAM Apps credentials are not a fallback");
+const partial = readAirtelSmsCredentials((name) =>
+  name === "AIRTEL_SMS_SENDER_ID" ? "" : dedicatedEnv[name],
+);
+assert(partial === null, "an incomplete dedicated account is not used");
+const hold = holdForMissingAirtelSmsConfig();
+assert(
+  hold.claim === false &&
+    hold.send === false &&
+    hold.fallbackToWamApps === false &&
+    hold.preserveQueue === true &&
+    hold.category === "airtel_sms_not_configured",
+  "missing dedicated credentials leave the queue pending and do not send",
+);
+assert(
+  decideAfterProviderResult({ outcome: "failed", category: hold.category, code: null }, 1).retry === false,
+  "a configuration failure is not an Onfon retry",
+);
+
+const workerSource = readFileSync(
+  new URL("../../process-customer-assignment-sms/index.ts", import.meta.url),
+  "utf8",
+);
+assert(workerSource.includes("readAirtelSmsCredentials"), "the Airtel worker reads the dedicated account");
+assert(!workerSource.includes("ONFON_"), "the Airtel worker does not reference WAM Apps Onfon secrets");
+for (const file of [
+  "admin-send-sms/index.ts",
+  "send-lead-contact-otp/index.ts",
+  "complete-lead-registration/index.ts",
+]) {
+  const source = readFileSync(new URL(`../../${file}`, import.meta.url), "utf8");
+  assert(source.includes("ONFON_API_KEY"), `${file} still uses the WAM Apps account`);
+  assert(!source.includes("AIRTEL_SMS_"), `${file} does not use the Airtel account`);
+}
 
 const offers = new Map<string, { id: string }>();
 function queueOffer(offerId: string) {

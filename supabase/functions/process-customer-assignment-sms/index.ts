@@ -2,12 +2,16 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { handleCorsPreflight, jsonResponse } from "../_shared/dispatch/cors.ts";
 import {
+  buildAirtelSmsRequest,
   classifyOnfonResponse,
   composeAssignmentSms,
   decideAfterProviderResult,
+  holdForMissingAirtelSmsConfig,
   isAirtel5gWebsiteLead,
   normalizeKenyanMobile,
+  readAirtelSmsCredentials,
   retryDelayMinutes,
+  type AirtelSmsCredentials,
   type OnfonClassification,
 } from "../_shared/sms/customer-assignment-sms.ts";
 
@@ -16,8 +20,6 @@ import {
  * Auth matches dispatch-sweep: service role, inbound API key, or cron secret.
  * Acceptance does not call this function.
  */
-
-const ONFON_URL = "https://api.onfonmedia.co.ke/v1/sms/SendBulkSMS";
 
 type OutboxRow = {
   id: string;
@@ -46,33 +48,18 @@ function verifyAccess(req: Request): boolean {
 }
 
 async function submitOnfon(
+  credentials: AirtelSmsCredentials,
   phone: string,
   text: string,
   unicode: boolean,
 ): Promise<OnfonClassification> {
-  const apiKey = Deno.env.get("ONFON_API_KEY")?.trim();
-  const clientId = Deno.env.get("ONFON_CLIENT_ID")?.trim();
-  const accessKey = Deno.env.get("ONFON_ACCESS_KEY")?.trim();
-  const senderId = Deno.env.get("ONFON_SENDER_ID")?.trim();
-  if (!apiKey || !clientId || !accessKey || !senderId) {
-    return { outcome: "failed", category: "sms_not_configured", code: null };
-  }
+  const request = buildAirtelSmsRequest(credentials, phone, text, unicode);
 
   try {
-    const response = await fetch(ONFON_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        AccessKey: accessKey,
-      },
-      body: JSON.stringify({
-        SenderId: senderId,
-        IsUnicode: unicode,
-        IsFlash: false,
-        MessageParameters: [{ Number: phone, Text: text }],
-        ApiKey: apiKey,
-        ClientId: clientId,
-      }),
+    const response = await fetch(request.url, {
+      method: request.method,
+      headers: request.headers,
+      body: JSON.stringify(request.body),
       signal: AbortSignal.timeout(30_000),
     });
     const payload = (await response.json().catch(() => null)) as {
@@ -123,7 +110,11 @@ async function finish(
   }
 }
 
-async function processRow(service: SupabaseClient, row: OutboxRow) {
+async function processRow(
+  service: SupabaseClient,
+  credentials: AirtelSmsCredentials,
+  row: OutboxRow,
+) {
   const [{ data: lead }, { data: agent }] = await Promise.all([
     service
       .from("inbound_leads")
@@ -181,7 +172,7 @@ async function processRow(service: SupabaseClient, row: OutboxRow) {
   }
 
   try {
-  const classification = await submitOnfon(customerPhone, composed.body, composed.unicode);
+  const classification = await submitOnfon(credentials, customerPhone, composed.body, composed.unicode);
   const decision = decideAfterProviderResult(classification, row.attempt_count);
   const providerCode = "code" in classification ? classification.code : null;
   const patch: Record<string, unknown> = {
@@ -232,8 +223,14 @@ Deno.serve(async (req) => {
   }
 
   const service = createClient(supabaseUrl, serviceKey);
+  const credentials = readAirtelSmsCredentials((name) => Deno.env.get(name));
   try {
     await service.rpc("expire_stale_customer_assignment_sms_claims");
+    if (!credentials) {
+      const hold = holdForMissingAirtelSmsConfig();
+      console.error("customer-assignment-sms", { category: hold.category });
+      return jsonResponse({ success: false, error: hold.category, claimed: 0 });
+    }
     const { data: claimed, error: claimError } = await service.rpc(
       "claim_customer_assignment_sms",
       { batch_size: 15 },
@@ -247,7 +244,7 @@ Deno.serve(async (req) => {
     const counts: Record<string, number> = {};
     for (const row of rows) {
       try {
-        const status = await processRow(service, row);
+        const status = await processRow(service, credentials, row);
         counts[status] = (counts[status] ?? 0) + 1;
       } catch {
         const retry = row.attempt_count < 5;
